@@ -1,0 +1,127 @@
+/* =============================================================================
+   PhishGuard — Global Styles
+   index.css: CSS custom properties, reset, utility classes, keyframe animations
+   ============================================================================= */
+
+/* ---------------------------------------------------------------------------
+   1. CSS Custom Properties
+   --------------------------------------------------------------------------- */
+:root {
+  /* Colors */
+  --color-base-bg:      #050508;
+  --color-neon-cyan:    #00e5ff;
+  --color-neon-amber:   #ffa940;
+  --color-neon-crimson: #ff4d4f;
+  --color-neon-green:   #39ff14;
+  --color-text:         #e0e0e0;
+  --color-text-muted:   rgba(224, 224, 224, 0.7);
+
+  /* Glassmorphism */
+  --glass-bg:     rgba(255, 255, 255, 0.04);
+  --glass-border: rgba(0, 229, 255, 0.15);
+  --glass-shadow: 0 8px 32px rgba(0, 229, 255, 0.08);
+
+  /* Typography */
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-heading: 'Orbitron', 'Share Tech Mono', monospace;
+
+  /* Animation durations */
+  --dur-arc:         1200ms;
+  --dur-bar:         800ms;
+  --dur-scan-line:   1200ms;
+  --dur-spinner:     900ms;
+  --dur-badge-pulse: 1500ms;
+  --dur-nav-pulse:   2000ms;
+
+  /* Layout */
+  --nav-height: 64px;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Global Reset & Base Styles
+   --------------------------------------------------------------------------- */
+body {
+  background:  var(--color-base-bg);
+  color:       var(--color-text);
+  font-family: var(--font-body);
+  margin:      0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Glassmorphism Utility Class
+   --------------------------------------------------------------------------- */
+.glass-card {
+  background:           var(--glass-bg);
+  backdrop-filter:      blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border:               1px solid var(--glass-border);
+  box-shadow:           var(--glass-shadow);
+  border-radius:        16px;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Accessibility: Focus Visible Ring
+   --------------------------------------------------------------------------- */
+*:focus-visible {
+  outline:        2px solid var(--color-neon-cyan);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   5. Reduced Motion
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   6. Shared Keyframe Animations
+   --------------------------------------------------------------------------- */
+
+/* NavigationBar "SYSTEM ONLINE" pulse */
+@keyframes pg-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.4; transform: scale(0.95); }
+}
+
+/* Loading spinner rotation */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Loading scan-line sweep */
+@keyframes scan-sweep {
+  0%   { transform: translateY(-100%);  }
+  100% { transform: translateY(100vh);  }
+}
+
+/* ThreatBadge phishing glow pulse */
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 4px  4px  rgba(255, 77, 79, 0.6); }
+  50%       { box-shadow: 0 0 16px 16px rgba(255, 77, 79, 0.3); }
+}
+
+/* XAIPanel list item staggered fade-up */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ErrorBanner entrance */
+@keyframes banner-enter {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* EnginePanel bar fill (transform-based, GPU-composited) */
+@keyframes bar-fill {
+  to { transform: scaleX(var(--target-scale, 0)); }
+}

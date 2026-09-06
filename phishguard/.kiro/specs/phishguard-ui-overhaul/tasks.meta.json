@@ -1,0 +1,460 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1 Create `src/theme.ts` with all color, font, duration, and size constants": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297940445
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297954676
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298371891
+      }
+    ],
+    "1.2 Create `src/types/api.ts` with all shared TypeScript interfaces": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297942691
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297955429
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298372625
+      }
+    ],
+    "1.3 Rewrite `src/index.css` with CSS custom properties, global reset, glassmorphism utility class, and all shared keyframe animations": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297942775
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298377935
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298467715
+      }
+    ],
+    "1.4 Update `index.html` to add Google Fonts and correct page title": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297942909
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298378615
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298468679
+      }
+    ],
+    "1.5 Update `vite.config.ts` to enforce the 150 KB bundle cap": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297942986
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298379423
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298469470
+      }
+    ],
+    "2.1 Create `src/hooks/useAnalysis.ts` implementing the API state machine": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943053
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298380206
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298470356
+      }
+    ],
+    "3.1 Create `src/components/ParticleBackground.tsx` with canvas particle system": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943122
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298475636
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298866674
+      }
+    ],
+    "4.1 Create `src/components/NavigationBar.tsx` and `NavigationBar.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943205
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298476420
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298867432
+      }
+    ],
+    "5.1 Create `src/components/ThreatBadge.tsx` and `ThreatBadge.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943291
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298477297
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298868216
+      }
+    ],
+    "6.1 Create `src/components/ThreatMeter.tsx` and `ThreatMeter.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943364
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298889238
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299006690
+      }
+    ],
+    "7.1 Create `src/components/EnginePanel.tsx` and `EnginePanel.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943450
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298889906
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299007474
+      }
+    ],
+    "8.1 Create `src/components/XAIPanel.tsx` and `XAIPanel.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943536
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298890725
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299008328
+      }
+    ],
+    "9.1 Create `src/components/ErrorBanner.tsx` and `ErrorBanner.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943621
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298891570
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299009088
+      }
+    ],
+    "10.1 Create `src/components/ScannerPanel.tsx` and `ScannerPanel.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943700
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299014711
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299145632
+      }
+    ],
+    "11.1 Create `src/components/ScanHistory.tsx` and `ScanHistory.css`": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943920
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299015382
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299146390
+      }
+    ],
+    "12. Checkpoint — verify component library compiles": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297943993
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299153242
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299553531
+      }
+    ],
+    "13.1 Rewrite `App.tsx` to wire all components using `useAnalysis` and history state": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297944063
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299559163
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299650425
+      }
+    ],
+    "13.2 Rewrite `App.css` to contain only global layout rules": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297944215
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299560105
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299651308
+      }
+    ],
+    "14.1 Create `scripts/check-bundle-size.mjs` that fails the build if app chunks exceed 150 KB gzipped": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297944295
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299657909
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299734918
+      }
+    ],
+    "15.1 Verify tab order and ARIA attributes across all components": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297944364
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299658928
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299735782
+      }
+    ],
+    "16. Final checkpoint — run build and bundle check": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786297944449
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299741279
+      },
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299862663
+      }
+    ],
+    "1. Foundation — theme tokens, shared types, global CSS, font loading, and Vite config": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298469551
+      }
+    ],
+    "2. `useAnalysis` custom hook": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298470442
+      }
+    ],
+    "3. `ParticleBackground` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298866740
+      }
+    ],
+    "4. `NavigationBar` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298867504
+      }
+    ],
+    "5. `ThreatBadge` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786298868281
+      }
+    ],
+    "6. `ThreatMeter` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299006738
+      }
+    ],
+    "7. `EnginePanel` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299007537
+      }
+    ],
+    "8. `XAIPanel` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299008374
+      }
+    ],
+    "9. `ErrorBanner` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299009151
+      }
+    ],
+    "10. `ScannerPanel` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299145706
+      }
+    ],
+    "11. `ScanHistory` component": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299146441
+      }
+    ],
+    "13. `App.tsx` refactor — root state owner wiring all components": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299651373
+      }
+    ],
+    "14. Bundle size enforcement script": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299734971
+      }
+    ],
+    "15. Final integration, accessibility, and reduced-motion pass": [
+      {
+        "executionId": "a4289be1-9ac1-4afa-be20-4b216db9cac4",
+        "chatSessionId": "sess_79a7cd1e-5136-4254-b5f9-0e4505524519",
+        "timestamp": 1786299735851
+      }
+    ]
+  }
+}

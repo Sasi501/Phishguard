@@ -1,0 +1,41 @@
+{
+  "accuracy": 0.979,
+  "precision": 0.988,
+  "recall": 0.9699,
+  "f1_score": 0.9789,
+  "roc_auc": 0.9963,
+  "train_size": 79996,
+  "test_size": 20000,
+  "feature_importance": {
+    "path_length": 67.2097,
+    "url_length": 7.4374,
+    "num_dots": 5.5677,
+    "num_digits_in_domain": 5.3637,
+    "hostname_length": 4.8231,
+    "num_hyphens": 3.1609,
+    "entropy": 2.5026,
+    "uses_https": 1.9729,
+    "num_query_params": 0.6748,
+    "suspicious_keywords": 0.6676,
+    "query_length": 0.6083,
+    "num_at": 0.0087,
+    "num_special_chars": 0.0024,
+    "has_ip_address": 0.0
+  },
+  "shap_importance": {
+    "path_length": 3.2396,
+    "url_length": 2.1056,
+    "num_dots": 1.2883,
+    "entropy": 0.6185,
+    "num_hyphens": 0.4873,
+    "hostname_length": 0.4664,
+    "num_digits_in_domain": 0.3993,
+    "uses_https": 0.193,
+    "query_length": 0.0863,
+    "num_query_params": 0.0861,
+    "suspicious_keywords": 0.0333,
+    "num_at": 0.0007,
+    "num_special_chars": 0.0001,
+    "has_ip_address": 0.0
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "self_healing_test",
+  "version": "v1",
+  "artifact": "artifact.bin",
+  "storage_uri": "mock://models/self_healing_test/v1/artifact.bin"
+}

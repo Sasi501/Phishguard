@@ -1,0 +1,54 @@
+﻿# Secrets & Environment variables (DO NOT COMMIT)
+.env
+*.env
+.env.*
+!.env.example
+secrets/
+
+# Python Virtual Environments
+venv/
+venv_win/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node.js / Frontend dependencies and builds
+node_modules/
+dist/
+build/
+.next/
+
+# Large Model Weights (>100MB exceeds GitHub hard limit)
+# Note: Hugging Face DistilBERT can be downloaded via python backend/nlp/download_model.py
+*.safetensors
+*.pt
+backend/nlp/models/
+backend/nlp/results/
+results/
+checkpoint-*/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# System & OS junk
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+__MACOSX/
+
+# Temporary / Agent Scratch
+brain/
+scratch/
+reports/llm-ensemble-smoke-tests*.md

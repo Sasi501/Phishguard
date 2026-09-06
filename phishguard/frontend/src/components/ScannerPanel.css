@@ -1,0 +1,271 @@
+/* =============================================================================
+   ScannerPanel — URL input form with advanced options and loading state
+   ============================================================================= */
+
+/* ---------------------------------------------------------------------------
+   Panel container
+   --------------------------------------------------------------------------- */
+.scanner-panel {
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Loading: scan-line sweep
+   --------------------------------------------------------------------------- */
+.scanner-panel__scan-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--color-neon-cyan);
+  box-shadow:
+    0 0 8px 2px var(--color-neon-cyan),
+    0 0 24px 4px rgba(0, 229, 255, 0.4);
+  animation: scan-sweep var(--dur-scan-line) linear infinite;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Loading: status message row
+   --------------------------------------------------------------------------- */
+.scanner-panel__loading-status {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1.25rem;
+  color: var(--color-neon-cyan);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+/* ---------------------------------------------------------------------------
+   Loading: spinner arc
+   --------------------------------------------------------------------------- */
+.scanner-panel__spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--color-neon-cyan);
+  border-top-color: transparent;
+  flex-shrink: 0;
+  animation: spin var(--dur-spinner) linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Form field wrapper
+   --------------------------------------------------------------------------- */
+.scanner-panel__field {
+  margin-bottom: 1.25rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Labels
+   --------------------------------------------------------------------------- */
+.scanner-panel__label {
+  display: block;
+  font-family: var(--font-heading);
+  color: var(--color-neon-cyan);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Text input
+   --------------------------------------------------------------------------- */
+.scanner-panel__input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.scanner-panel__input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.scanner-panel__input:focus {
+  border-color: var(--color-neon-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.25), 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.scanner-panel__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Input error state
+   --------------------------------------------------------------------------- */
+.scanner-panel__input--error {
+  border-color: var(--color-neon-crimson);
+}
+
+.scanner-panel__input--error:focus {
+  border-color: var(--color-neon-crimson);
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.25), 0 0 8px rgba(255, 77, 79, 0.3);
+}
+
+/* ---------------------------------------------------------------------------
+   Textarea
+   --------------------------------------------------------------------------- */
+.scanner-panel__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--color-text);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.scanner-panel__textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.scanner-panel__textarea:focus {
+  border-color: var(--color-neon-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.25), 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.scanner-panel__textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   File input
+   --------------------------------------------------------------------------- */
+.scanner-panel__file-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.scanner-panel__file-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Style the file picker button in supporting browsers */
+.scanner-panel__file-input::file-selector-button {
+  background: rgba(0, 229, 255, 0.1);
+  color: var(--color-neon-cyan);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 0.375rem 0.75rem;
+  font-family: var(--font-heading);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-right: 0.75rem;
+  transition: background 0.2s;
+}
+
+.scanner-panel__file-input::file-selector-button:hover {
+  background: rgba(0, 229, 255, 0.2);
+}
+
+/* ---------------------------------------------------------------------------
+   Inline field error messages
+   --------------------------------------------------------------------------- */
+.scanner-panel__field-error {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--color-neon-crimson);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Advanced options toggle
+   --------------------------------------------------------------------------- */
+.scanner-panel__advanced-toggle {
+  margin-bottom: 0.75rem;
+}
+
+.scanner-panel__toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: transparent;
+  border: none;
+  color: var(--color-neon-cyan);
+  font-family: var(--font-heading);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  transition: opacity 0.2s;
+}
+
+.scanner-panel__toggle-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.scanner-panel__toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Submit button
+   --------------------------------------------------------------------------- */
+.scanner-panel__submit {
+  display: block;
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 0.875rem 1.5rem;
+  background: var(--color-neon-cyan);
+  color: #050508;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 16px var(--color-neon-cyan);
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+
+.scanner-panel__submit:hover:not(:disabled) {
+  opacity: 0.9;
+  box-shadow: 0 0 28px var(--color-neon-cyan);
+}
+
+.scanner-panel__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}

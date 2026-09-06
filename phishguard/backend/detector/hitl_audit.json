@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "url": "http://127.0.0.1:8000/docs",
+    "action": "Classified as suspicious",
+    "reviewer": "admin",
+    "timestamp": 1786969133.6818106
+  }
+]

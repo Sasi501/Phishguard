@@ -1,0 +1,34 @@
+{
+  "feature_names": [
+    "url_length",
+    "hostname_length",
+    "path_length",
+    "query_length",
+    "num_query_params",
+    "num_dots",
+    "num_hyphens",
+    "num_at",
+    "num_special_chars",
+    "num_digits_in_domain",
+    "has_ip_address",
+    "entropy",
+    "suspicious_keywords",
+    "uses_https",
+    "num_subdomains",
+    "has_unicode",
+    "is_punycode",
+    "confusable_chars",
+    "mixed_script_changes"
+  ],
+  "num_features": 19,
+  "model_file": "phishguard_url_classifier.onnx",
+  "input_name": "features",
+  "classes": [
+    "safe",
+    "phishing"
+  ],
+  "thresholds": {
+    "phishing": 0.7,
+    "suspicious": 0.4
+  }
+}

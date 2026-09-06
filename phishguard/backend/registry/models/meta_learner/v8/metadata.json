@@ -1,0 +1,6 @@
+{
+  "name": "meta_learner",
+  "version": "v8",
+  "artifact": "artifact.bin",
+  "storage_uri": "mock://models/meta_learner/v8/artifact.bin"
+}

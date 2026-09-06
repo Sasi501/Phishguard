@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "url": "http://127.0.0.1:8000/docs",
+    "user_label": "safe",
+    "final_label": "suspicious",
+    "status": "resolved",
+    "created_at": 1786969127.3818536,
+    "updated_at": 1786969133.6812305,
+    "reviewer": "admin"
+  },
+  {
+    "id": 2,
+    "url": "http://127.0.0.1:8000/doc",
+    "user_label": "safe",
+    "final_label": "unknown",
+    "status": "pending",
+    "created_at": 1786969184.8696618,
+    "updated_at": 1786969184.8696618,
+    "reviewer": null
+  }
+]
