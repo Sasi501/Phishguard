@@ -48,12 +48,16 @@ foreach ($c in $activateCandidates) {
 
 if (-not $activateScript) {
     # No venv found — try to create one
-    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-        Write-ErrorExit "Python is not on PATH. Install Python 3.8+ and re-run."
+    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCommand) {
+        $pythonCommand = Get-Command py -ErrorAction SilentlyContinue
+    }
+    if (-not $pythonCommand) {
+        Write-ErrorExit "Python is not available. Install Python 3.8+ and re-run."
     }
 
     Write-Info "No virtualenv found. Creating venv at .\venv..."
-    python -m venv .\venv
+    & $pythonCommand.Source -m venv .\venv
     if ($LASTEXITCODE -ne 0) { Write-ErrorExit "Failed to create virtualenv" }
     $activateScript = '.\venv\Scripts\Activate.ps1'
 }
@@ -73,8 +77,8 @@ if ($FullInstall) {
         Write-ErrorExit "requirements.txt not found in backend folder."
     }
 } else {
-    Write-Info "Installing minimal dev/test deps (uvicorn, fastapi, requests, tldextract, python-whois, selenium, webdriver-manager)..."
-    pip install uvicorn fastapi requests tldextract python-whois selenium webdriver-manager
+    Write-Info "Installing minimal dev/test deps (uvicorn, fastapi, motor, certifi, python-multipart, requests, tldextract, python-whois, selenium, webdriver-manager)..."
+    pip install uvicorn fastapi motor certifi python-multipart requests tldextract python-whois selenium webdriver-manager
 }
 
 # Start uvicorn

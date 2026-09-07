@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install frontend dependencies",
+      "type": "shell",
+      "command": "npm --prefix phishguard/frontend install",
+      "inAgents": true,
+      "runOptions": {
+        "runOn": "worktreeCreated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start PhishGuard frontend",
+      "type": "shell",
+      "command": "npm --prefix phishguard/frontend run dev -- --host 127.0.0.1 --port 5173",
+      "inAgents": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Start PhishGuard backend",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File .\\phishguard\\backend\\start-server.ps1 -Port 8000",
+      "inAgents": true,
+      "problemMatcher": []
+    }
+  ]
+}

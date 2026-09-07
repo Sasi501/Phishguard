@@ -33,6 +33,6 @@ selenium
 webdriver-manager
 uvicorn>=0.27.0
 fastapi>=0.115.0
+python-multipart>=0.0.9
 redis>=5.0  # optional: set REDIS_URL env var to enable distributed rate limiting
 langdetect>=1.0.9  # language detection for multilingual NLP routing
-
