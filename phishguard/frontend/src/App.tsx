@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
 import useAnalysis from './hooks/useAnalysis'
 import type { ScanEntry, AnalyzeRequest } from './types/api'
 import { SIZES } from './theme'
@@ -7,12 +6,19 @@ import ParticleBackground from './components/ParticleBackground'
 import NavigationBar from './components/NavigationBar'
 import ScannerPanel from './components/ScannerPanel'
 import ThreatMeter from './components/ThreatMeter'
+import RiskAssessmentCard from './components/RiskAssessmentCard'
 import EnginePanel from './components/EnginePanel'
+import EngineSignalCard from './components/EngineSignalCard'
+import URLAnatomy from './components/URLAnatomy'
+import DomainIntelligence from './components/DomainIntelligence'
+import ThreatIntelligence from './components/ThreatIntelligence'
+import RedirectAnalysis from './components/RedirectAnalysis'
 import XAIPanel from './components/XAIPanel'
 import ModelRegistryPanel from './components/ModelRegistryPanel'
 import ScanHistory from './components/ScanHistory'
 import ErrorBanner from './components/ErrorBanner'
 import HITLLabelingPanel from './components/HITLLabelingPanel'
+import EngineStatus from './components/EngineStatus'
 import HeroDashboard from './components/HeroDashboard'
 import SettingsPanel from './components/SettingsPanel'
 import Footer from './components/Footer'
@@ -47,13 +53,11 @@ function App() {
   }
 
   const displayResult = activeEntry?.result ?? analysis.result
+  const resultUrl = activeEntry?.url ?? lastUrlRef.current
   const [showRegistry, setShowRegistry] = useState(false)
   const [showHITL, setShowHITL] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
-
-  // Use translation hook to force re-renders on lang change
-  const { t } = useTranslation()
 
   // Back to dashboard handler
   const handleBackToDashboard = () => {
@@ -92,18 +96,51 @@ function App() {
 
         {displayResult && (
           <div className="app-results">
-            <ThreatMeter
-              score={displayResult.ensemble_score_percent}
-              riskLevel={displayResult.ensemble_risk_level}
-            />
+            <div className="app-results__overview">
+              <RiskAssessmentCard
+                score={displayResult.ensemble_score_percent}
+                riskLevel={displayResult.ensemble_risk_level}
+                confidence={displayResult.xai ? 100 : undefined}
+                url={resultUrl}
+              />
+              <ThreatMeter
+                score={displayResult.ensemble_score_percent}
+                riskLevel={displayResult.ensemble_risk_level}
+              />
+            </div>
+
             {displayResult.individual_scores_percent &&
               Object.keys(displayResult.individual_scores_percent).length > 0 && (
                 <EnginePanel scores={displayResult.individual_scores_percent} />
               )}
-            {(displayResult.xai_summary || (displayResult.reasons && displayResult.reasons.length > 0)) && (
+
+            {displayResult.xai && displayResult.xai.engine_signals && displayResult.xai.engine_signals.length > 0 && (
+              <section className="engine-signals-section glass-card" aria-labelledby="multimodal-heading">
+                <div className="engine-signals-section__header">
+                  <h2 id="multimodal-heading" className="engine-signals-section__title">MULTI-MODAL ENGINE SIGNALS</h2>
+                  <p>Individual engine evidence; not the final ensemble assessment.</p>
+                </div>
+                <div className="engine-signals-section__grid">
+                  {displayResult.xai.engine_signals.map((signal, index) => (
+                    <EngineSignalCard key={`${signal.engine}-${index}`} signal={signal} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <URLAnatomy url={resultUrl} />
+            <DomainIntelligence
+              url={displayResult.redirect_analysis?.final_url || resultUrl}
+              xai={displayResult.xai ?? null}
+            />
+            <ThreatIntelligence xai={displayResult.xai ?? null} />
+            <RedirectAnalysis analysis={displayResult.redirect_analysis} />
+
+            {(displayResult.xai_summary || displayResult.xai || (displayResult.reasons && displayResult.reasons.length > 0)) && (
               <XAIPanel
                 summary={displayResult.xai_summary}
                 reasons={displayResult.reasons ?? []}
+                xai={displayResult.xai ?? null}
               />
             )}
 
@@ -118,6 +155,7 @@ function App() {
         {history.length > 0 && (
           <ScanHistory entries={history} onSelect={handleHistorySelect} />
         )}
+        <EngineStatus />
         {showRegistry && <ModelRegistryPanel />}
         {showHITL && <HITLLabelingPanel />}
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

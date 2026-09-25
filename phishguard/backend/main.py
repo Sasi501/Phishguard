@@ -3,9 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import Optional
+import base64
+import hashlib
+import hmac
+import json
 import os
+import json
+import secrets
 import time
 from urllib.parse import urlparse
+
+from db import init_db, get_db, hash_password, verify_password
 
 # Import engines
 try:
@@ -44,7 +52,41 @@ app = FastAPI(
     version="1.0.0"
 )
 
-from db import init_db, get_db
+APP_SECRET_KEY = os.environ.get("APP_SECRET_KEY") or os.environ.get("DJANGO_SECRET_KEY") or secrets.token_urlsafe(32)
+
+
+def _issue_auth_token(username: str) -> str:
+    """Issue a signed, server-generated auth token for this prototype."""
+    issued_at = int(time.time())
+    expires_at = issued_at + 3600
+    payload = {"sub": username, "iat": issued_at, "exp": expires_at}
+    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    payload_b64 = base64.urlsafe_b64encode(payload_json).decode("ascii").rstrip("=")
+    digest = hmac.new(APP_SECRET_KEY.encode("utf-8"), payload_json, hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return f"{payload_b64}.{sig_b64}"
+
+
+def _validate_auth_token(token: Optional[str]) -> Optional[str]:
+    """Return the username if the supplied token is valid and unexpired."""
+    if not token or "." not in token:
+        return None
+    payload_b64, sig_b64 = token.split(".", 1)
+    expected_sig = base64.urlsafe_b64encode(
+        hmac.new(APP_SECRET_KEY.encode("utf-8"), base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)), hashlib.sha256).digest()
+    ).decode("ascii").rstrip("=")
+    if not hmac.compare_digest(sig_b64, expected_sig):
+        return None
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4)))
+    except Exception:
+        return None
+    exp = payload.get("exp")
+    if not isinstance(exp, int) or exp < int(time.time()):
+        return None
+    uname = payload.get("sub")
+    return uname if isinstance(uname, str) and uname else None
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -185,23 +227,27 @@ class AuthRequest(BaseModel):
 
 @app.post("/api/login/")
 async def login(req: AuthRequest):
-    """Simple demo login returning a static token."""
+    """Authenticate a user and issue a signed auth token."""
     db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     user = await db.users.find_one({"username": req.username})
-    if user and user.get("password") == req.password:
-        # In real app, generate JWT or similar
-        return {"token": f"token-{req.username}", "message": "Login successful"}
+    if user and verify_password(req.password, user.get("password", "")):
+        return {"token": _issue_auth_token(req.username), "message": "Login successful"}
     raise HTTPException(status_code=401, detail="Invalid credentials")
+
 
 @app.post("/api/register/")
 async def register(req: AuthRequest):
-    """Simple demo registration."""
+    """Register a user with a hashed password and return a signed auth token."""
     db = get_db()
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     existing = await db.users.find_one({"username": req.username})
     if existing:
         raise HTTPException(status_code=400, detail="User already exists")
-    await db.users.insert_one({"username": req.username, "password": req.password})
-    return {"message": "User registered successfully"}
+    await db.users.insert_one({"username": req.username, "password": hash_password(req.password)})
+    return {"token": _issue_auth_token(req.username), "message": "User registered successfully"}
 
 
 # ─── Input validation helpers ────────────────────────────────────────────────
@@ -217,6 +263,11 @@ def _validate_url(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https'):
         raise HTTPException(status_code=400, detail='URL must use http or https scheme')
+    try:
+        from domain_module.redirect_unwrapper import validate_url_for_fetch
+        validate_url_for_fetch(url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f'Unsafe URL destination: {exc}') from exc
 
 async def _validate_image(image: UploadFile) -> bytes:
     content_type = (image.content_type or '').lower()
@@ -343,6 +394,7 @@ async def unwrap_redirect_endpoint(request: DomainRequest):
             "num_redirects": unwrap_result.get("num_redirects", 0),
             "loop_detected": unwrap_result.get("loop_detected", False),
             "suspicious_redirects": unwrap_result.get("suspicious_redirects", False),
+            "resolution_state": unwrap_result.get("resolution_state", "failed"),
             "has_meta_refresh": any(
                 hop.get("note") == "meta_refresh" 
                 for hop in unwrap_result.get("redirect_chain", [])
@@ -513,29 +565,64 @@ async def scan(
 # ─── Human-in-the-Loop (HITL) Endpoints ─────────────────────────────────────
 
 @app.post("/api/hitl/submit/")
-async def api_hitl_submit(url: str = Form(...), user_label: str = Form(...)):
+async def api_hitl_submit(
+    url: str = Form(...),
+    user_label: str = Form(...),
+    evidence_snapshot: Optional[str] = Form(None),
+):
     _validate_url(url)
     if user_label not in ("phishing", "safe", "suspicious"):
         raise HTTPException(status_code=400, detail="Invalid user label. Must be phishing, safe, or suspicious.")
     from detector.hitl_service import submit_url
-    return await submit_url(url, user_label)
+    snapshot = None
+    if evidence_snapshot:
+        try:
+            parsed_snapshot = json.loads(evidence_snapshot)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid evidence snapshot JSON.")
+        if not isinstance(parsed_snapshot, dict):
+            raise HTTPException(status_code=400, detail="Evidence snapshot must be an object.")
+        snapshot = parsed_snapshot
+    return await submit_url(url, user_label, snapshot)
 
 @app.get("/api/hitl/pending/", dependencies=[Depends(require_admin)])
 async def api_hitl_pending():
     from detector.hitl_service import get_pending_urls
     return await get_pending_urls()
 
+@app.post("/api/hitl/claim/", dependencies=[Depends(require_admin)])
+async def api_hitl_claim(
+    url: str = Form(...),
+    reviewer: Optional[str] = Form("admin"),
+):
+    _validate_url(url)
+    from detector.hitl_service import set_case_status
+    try:
+        result = await set_case_status(url, "under_review", reviewer or "admin")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if result is None:
+        raise HTTPException(status_code=404, detail="HITL case not found")
+    return result
+
 @app.post("/api/hitl/resolve/", dependencies=[Depends(require_admin)])
 async def api_hitl_resolve(
     url: str = Form(...),
     final_label: str = Form(...),
-    reviewer: Optional[str] = Form("admin")
+    reviewer: Optional[str] = Form("admin"),
+    comment: Optional[str] = Form(None),
 ):
     _validate_url(url)
-    if final_label not in ("phishing", "safe", "suspicious"):
-        raise HTTPException(status_code=400, detail="Invalid label. Must be phishing, safe, or suspicious.")
+    if final_label not in ("phishing", "safe", "suspicious", "needs_investigation"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid label. Must be phishing, safe, suspicious, or needs_investigation.",
+        )
     from detector.hitl_service import resolve_url
-    res = await resolve_url(url, final_label, reviewer)
+    try:
+        res = await resolve_url(url, final_label, reviewer or "admin", comment)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not res:
         raise HTTPException(status_code=404, detail="URL not found in HITL queue")
     return res
@@ -544,4 +631,3 @@ async def api_hitl_resolve(
 async def api_hitl_audit_logs():
     from detector.hitl_service import get_audit_logs
     return await get_audit_logs()
-

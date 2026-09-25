@@ -107,6 +107,8 @@ def register_model(name: str, artifact_src: str, version: Optional[str] = None, 
     # Copy artifact
     artifact_name = os.path.basename(artifact_src)
     dest_artifact = os.path.join(dest_dir, artifact_name)
+    if os.path.exists(dest_artifact):
+        os.remove(dest_artifact)
     shutil.copy2(artifact_src, dest_artifact)
 
     # Upload to remote / simulated storage

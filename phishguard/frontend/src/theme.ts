@@ -42,6 +42,9 @@ export const SIZES = {
 // Risk level → accent color mapping
 export const RISK_COLORS: Record<string, string> = {
   safe:       COLORS.neonGreen,
+  low:        COLORS.neonCyan,
+  medium:     COLORS.neonAmber,
+  high:       COLORS.neonCrimson,
   suspicious: COLORS.neonAmber,
   phishing:   COLORS.neonCrimson,
 }

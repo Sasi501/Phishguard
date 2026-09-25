@@ -36,7 +36,28 @@ def _cache_set(key: str, payload: dict, ttl: int = None):
         _CACHE[key] = (expires_at, payload)
 
 
-def analyze_domain(url: str, use_browser: bool = False, cache_ttl: int | None = None) -> dict:
+def _build_redirect_analysis(original_url: str, unwrap_result: dict) -> dict:
+    """Normalize resolver output into the stable per-scan redirect contract."""
+    chain = unwrap_result.get("redirect_chain", []) or []
+    return {
+        "original_url": unwrap_result.get("original_url", original_url),
+        "final_url": unwrap_result.get("final_url", original_url),
+        "redirect_chain": chain,
+        "num_redirects": unwrap_result.get("num_redirects", max(0, len(chain) - 1)),
+        "loop_detected": bool(unwrap_result.get("loop_detected", False)),
+        "suspicious_redirects": bool(unwrap_result.get("suspicious_redirects", False)),
+        "has_meta_refresh": any(hop.get("note") == "meta_refresh" for hop in chain),
+        "resolution_state": unwrap_result.get("resolution_state", "failed"),
+        "errors": unwrap_result.get("errors", []) or [],
+    }
+
+
+def analyze_domain(
+    url: str,
+    use_browser: bool = False,
+    cache_ttl: int | None = None,
+    redirect_analysis: dict | None = None,
+) -> dict:
     """
     Orchestrates redirect unwrapping and domain intelligence.
 
@@ -57,14 +78,18 @@ def analyze_domain(url: str, use_browser: bool = False, cache_ttl: int | None = 
         # Return a shallow copy to avoid accidental mutation by callers
         return dict(cached)
 
-    # 1. Unwrap the URL (follow redirects safely)
-    if is_likely_shortener(url):
-        # For known shorteners, expand first (safer UX for users)
-        unwrap_result = expand_short_url(url)
+    # 1. Resolve once for this analysis. The ensemble passes this result back
+    # through XAI rather than resolving the same URL a second time.
+    if redirect_analysis is None:
+        if is_likely_shortener(url):
+            unwrap_result = expand_short_url(url)
+        else:
+            unwrap_result = unwrap_url(url, use_browser=use_browser)
+        redirect_analysis = _build_redirect_analysis(url, unwrap_result)
     else:
-        unwrap_result = unwrap_url(url, use_browser=use_browser)
+        redirect_analysis = _build_redirect_analysis(url, redirect_analysis)
 
-    final_url = unwrap_result.get("final_url", url)
+    final_url = redirect_analysis["final_url"]
 
     # 2. Get Metadata for the final URL
     metadata = get_domain_metadata(final_url)
@@ -86,7 +111,7 @@ def analyze_domain(url: str, use_browser: bool = False, cache_ttl: int | None = 
         pass
 
     # Combine redirect signals
-    if unwrap_result.get("suspicious_redirects"):
+    if redirect_analysis.get("suspicious_redirects"):
         risk_result["domain_score"] = min(risk_result["domain_score"] + 0.3, 1.0)
         risk_result.setdefault("domain_signals", []).append("suspicious_redirect_chain")
 
@@ -97,13 +122,14 @@ def analyze_domain(url: str, use_browser: bool = False, cache_ttl: int | None = 
         elif score >= 0.4:
             risk_result["domain_risk_level"] = "suspicious"
 
-    risk_result["redirect_chain"] = unwrap_result.get("redirect_chain", [])
+    risk_result["redirect_chain"] = redirect_analysis["redirect_chain"]
     risk_result["original_url"] = url
     risk_result["final_url"] = final_url
+    risk_result["redirect_analysis"] = redirect_analysis
 
     # Attach any unwrap errors for observability
-    if unwrap_result.get("errors"):
-        risk_result.setdefault("warnings", []).extend(unwrap_result.get("errors", []))
+    if redirect_analysis["errors"]:
+        risk_result.setdefault("warnings", []).extend(redirect_analysis["errors"])
 
     # Cache the assembled result
     _cache_set(cache_key, risk_result, ttl=cache_ttl)

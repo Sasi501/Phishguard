@@ -1,0 +1,125 @@
+.engine-status {
+  width: 100%;
+  max-width: 1100px;
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.engine-status__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.engine-status__eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-heading);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+}
+
+.engine-status__title {
+  margin: 0;
+  color: var(--color-neon-cyan);
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  letter-spacing: 0.14em;
+}
+
+.engine-status__legend {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.engine-status__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.engine-status__item {
+  min-width: 0;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.engine-status__item-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.engine-status__item h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.engine-status__item strong {
+  display: block;
+  margin-top: 0.65rem;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+.engine-status__item p {
+  margin: 0.45rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.engine-status__indicator {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.engine-status__item--healthy,
+.engine-status__item--available,
+.engine-status__item--active {
+  color: var(--color-neon-green);
+}
+
+.engine-status__item--unavailable {
+  color: var(--color-neon-crimson);
+}
+
+.engine-status__item--unknown {
+  color: var(--color-neon-amber);
+}
+
+.engine-status__loading,
+.engine-status__note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.engine-status__note {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .engine-status__header {
+    flex-direction: column;
+  }
+
+  .engine-status__grid {
+    grid-template-columns: 1fr;
+  }
+}

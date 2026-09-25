@@ -176,6 +176,20 @@ function getOfflineEstimate(url) {
   }
 }
 
+function getRedirectAnalysis(raw) {
+  const analysis = raw?.redirect_analysis;
+  if (!analysis || typeof analysis !== "object") return null;
+  return {
+    original_url: analysis.original_url || "",
+    final_url: analysis.final_url || "",
+    num_redirects: Number.isFinite(analysis.num_redirects) ? analysis.num_redirects : 0,
+    resolution_state: analysis.resolution_state || "unavailable",
+    suspicious_redirects: Boolean(analysis.suspicious_redirects),
+    loop_detected: Boolean(analysis.loop_detected),
+    has_meta_refresh: Boolean(analysis.has_meta_refresh),
+  };
+}
+
 async function scanURL(url, tabId) {
   // Skip non-http URLs (chrome://, file://, etc.)
   if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -254,6 +268,7 @@ async function scanURL(url, tabId) {
         confidence:  raw.domain_score || raw.confidence || 0,
         reason:      raw.metadata?.ssl_error || raw.reason || "",
         signals:     raw.domain_signals || raw.signals || [],
+        redirect_analysis: getRedirectAnalysis(raw),
       };
 
       // Cache mapped result
@@ -287,6 +302,7 @@ async function scanURL(url, tabId) {
                      : (raw.confidence || 0),
       reason:      raw.xai_summary || raw.reason || "",
       signals:     raw.reasons || raw.signals || [],
+      redirect_analysis: getRedirectAnalysis(raw),
     };
 
     // Cache mapped result
@@ -305,11 +321,18 @@ async function scanURL(url, tabId) {
 
 
 async function applyResult(result, tabId, url) {
-  const { risk_level, confidence, reason, signals } = result;
+  const { risk_level, confidence, reason, signals, redirect_analysis } = result;
 
   // Save to local storage for popup
   await chrome.storage.local.set({
-    [`tab_${tabId}`]: { url, state: risk_level, reason, signals: signals || [], confidence: confidence || 0 }
+    [`tab_${tabId}`]: {
+      url,
+      state: risk_level,
+      reason,
+      signals: signals || [],
+      confidence: confidence || 0,
+      redirect_analysis: redirect_analysis || null,
+    }
   });
 
   await setTabIcon(tabId, risk_level);

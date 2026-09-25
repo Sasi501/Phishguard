@@ -45,6 +45,56 @@ function truncate(str, n) {
   return str && str.length > n ? str.slice(0, n) + "…" : str;
 }
 
+function renderRedirectAnalysis(analysis) {
+  const box = document.getElementById("redirect-box");
+  if (!analysis || typeof analysis !== "object") {
+    box.style.display = "none";
+    return;
+  }
+
+  const state = analysis.resolution_state || "unavailable";
+  const labels = {
+    completed: "Destination resolved successfully",
+    blocked: "Redirect resolution blocked",
+    failed: "Redirect resolution failed",
+    loop: "Redirect loop detected",
+    limit_exceeded: "Redirect limit exceeded",
+    unavailable: "Redirect resolution unavailable",
+  };
+  const tone = state === "completed"
+    ? ""
+    : ["blocked", "loop", "limit_exceeded"].includes(state) ? "warning" : "failed";
+  const count = Number.isFinite(analysis.num_redirects) ? analysis.num_redirects : 0;
+  const summary = document.getElementById("redirect-summary");
+  summary.className = `redirect-summary ${tone}`;
+  summary.textContent = count > 0
+    ? `${count} redirect${count === 1 ? "" : "s"} detected — ${labels[state] || state.replaceAll("_", " ")}.`
+    : (labels[state] || state.replaceAll("_", " "));
+
+  const destination = document.getElementById("redirect-destination");
+  destination.textContent = "";
+  if (analysis.final_url) {
+    const label = document.createElement("strong");
+    label.textContent = "Final destination: ";
+    destination.appendChild(label);
+    destination.appendChild(document.createTextNode(truncate(analysis.final_url, 100)));
+  }
+
+  const flags = document.getElementById("redirect-flags");
+  flags.innerHTML = "";
+  const flagTexts = [];
+  if (analysis.suspicious_redirects) flagTexts.push("Suspicious chain indicator");
+  if (analysis.loop_detected) flagTexts.push("Loop detected");
+  if (analysis.has_meta_refresh) flagTexts.push("Meta refresh");
+  flagTexts.forEach(text => {
+    const flag = document.createElement("span");
+    flag.className = "redirect-flag";
+    flag.textContent = text;
+    flags.appendChild(flag);
+  });
+  box.style.display = "block";
+}
+
 function renderState(data) {
   const state = data?.state || "loading";
   const config = STATE_CONFIG[state] || STATE_CONFIG.loading;
@@ -66,7 +116,12 @@ function renderState(data) {
   // Sub label
   document.getElementById("status-sub").textContent = config.sub;
 
-  if (!data || state === "loading" || state === "error") return;
+  if (!data || state === "loading" || state === "error") {
+    renderRedirectAnalysis(null);
+    return;
+  }
+
+  renderRedirectAnalysis(data.redirect_analysis);
 
   // Confidence bar
   const confPct = Math.round((data.confidence || 0) * 100);

@@ -1,20 +1,75 @@
+import ipaddress
+import os
+import re
+import socket
+import time
+from urllib.parse import urljoin, urlparse
+
 import requests
-from urllib.parse import urlparse
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-import time
-import re
+
+
+_BLOCKED_IPV4_NETWORKS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+)
+
+_METADATA_IP = ipaddress.ip_address("169.254.169.254")
+_DEFAULT_TOTAL_TIMEOUT = float(os.environ.get("REDIRECT_RESOLUTION_TIMEOUT_SECONDS", "30"))
+_META_REFRESH_MAX_BYTES = 4096
+
+
+def _is_unsafe_ip(ip: ipaddress._BaseAddress) -> bool:
+    if isinstance(ip, ipaddress.IPv4Address):
+        if ip == _METADATA_IP:
+            return True
+        return any(ip in network for network in _BLOCKED_IPV4_NETWORKS) or ip.is_loopback or ip.is_private or ip.is_link_local
+    if isinstance(ip, ipaddress.IPv6Address):
+        return ip.is_loopback or ip.is_link_local or ip.is_private
+    return False
+
+
+def validate_url_for_fetch(url: str) -> str:
+    """Validate a user-supplied URL before any network fetch or redirect follow."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("URL must use http or https scheme")
+    if not parsed.hostname:
+        raise ValueError("URL hostname is required")
+
+    try:
+        infos = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror:
+        return url
+
+    resolved_ips = []
+    for _, _, _, _, sockaddr in infos:
+        ip_text = sockaddr[0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_text)
+        except ValueError:
+            continue
+        resolved_ips.append(ip_obj)
+        if _is_unsafe_ip(ip_obj):
+            raise ValueError(f"Unsafe destination resolved to blocked address: {ip_obj}")
+
+    if not resolved_ips:
+        return url
+    return url
 
 
 def _extract_meta_refresh(html: str) -> str | None:
-    """
-    Parse HTML content for <meta http-equiv="refresh" content="N;url=..."> tags.
-    Returns the redirect URL if found, or None.
-    """
-    # Match: <meta http-equiv="refresh" content="0;url=https://example.com">
-    # Also handles single quotes, varying whitespace, and missing url= prefix
+    """Return the URL from a supported HTML meta-refresh tag, if present."""
     pattern = r'<meta[^>]+http-equiv\s*=\s*["\']?\s*refresh\s*["\']?[^>]+content\s*=\s*["\']?\s*\d+\s*;\s*(?:url\s*=\s*)?([^"\'>]+)'
     match = re.search(pattern, html, re.IGNORECASE)
     if match:
@@ -23,134 +78,214 @@ def _extract_meta_refresh(html: str) -> str | None:
             return url
     return None
 
-def unwrap_url(url: str, max_redirects: int = 5, timeout: int = 5, use_browser: bool = False) -> dict:
+
+def _read_response_prefix(
+    response,
+    max_bytes: int = _META_REFRESH_MAX_BYTES,
+    deadline: float | None = None,
+) -> bytes:
+    """Read only the bounded prefix needed to detect a meta refresh."""
+    iterator = getattr(response, "iter_content", None)
+    if callable(iterator):
+        chunks = []
+        total = 0
+        for chunk in iterator(chunk_size=min(1024, max_bytes)):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise requests.Timeout("total resolution budget exceeded")
+            if not chunk:
+                continue
+            remaining = max_bytes - total
+            chunks.append(chunk[:remaining])
+            total += min(len(chunk), remaining)
+            if total >= max_bytes:
+                break
+        return b"".join(chunks)
+
+    content = getattr(response, "content", b"")
+    if isinstance(content, str):
+        content = content.encode("utf-8", errors="ignore")
+    return content[:max_bytes]
+
+
+def unwrap_url(
+    url: str,
+    max_redirects: int = 5,
+    timeout: int = 5,
+    use_browser: bool = False,
+    total_timeout: float | None = None,
+) -> dict:
     """
     Safely resolve a URL's redirect chain.
 
-    - Follows HTTP Location headers manually up to `max_redirects` to avoid uncontrolled
-      automatic following and to capture intermediate URLs and status codes.
-    - Detects redirect loops and stops when the same URL repeats.
-    - By default does NOT run a browser. Set `use_browser=True` to attempt a lightweight
-      Selenium-based page load to capture JS/meta-refresh redirects (disabled in typical
-      server deployments).
-
-    Returns a dict with:
-      original_url, final_url, redirect_chain (list of {url, status_code}),
-      num_redirects, loop_detected, errors (list).
+    HTTP redirects are followed manually with bounded per-request and total
+    timeouts. Browser navigation remains opt-in and is not used by the main scan.
     """
-    from urllib.parse import urljoin
+    if total_timeout is None:
+        total_timeout = _DEFAULT_TOTAL_TIMEOUT
+
     path = []
     errors = []
-
+    loop_detected = False
+    resolution_state = "failed"
     session = requests.Session()
-    # Use a conservative User-Agent
-    session.headers.update({
-        "User-Agent": "PhishGuard/1.0 (+https://phishguard.local)"
-    })
+    session.headers.update({"User-Agent": "PhishGuard/1.0 (+https://phishguard.local)"})
 
     current = url
     seen = set()
+    redirects_followed = 0
+    deadline = time.monotonic() + max(0.0, total_timeout)
 
     try:
-        for i in range(max_redirects + 1):
-            if current in seen:
-                # loop detected
-                path.append({"url": current, "status_code": None, "note": "loop_detected"})
-                loop_detected = True
+        while True:
+            if time.monotonic() >= deadline:
+                errors.append("total_timeout:redirect resolution budget exceeded")
+                resolution_state = "failed"
                 break
 
+            if current in seen:
+                path.append({"url": current, "status_code": None, "note": "loop_detected"})
+                loop_detected = True
+                resolution_state = "loop"
+                break
             seen.add(current)
 
             try:
-                # Use GET with stream=True so body isn't downloaded fully if server responds
-                resp = session.get(current, allow_redirects=False, timeout=timeout, stream=True)
-                status = resp.status_code
-            except Exception as e:
-                errors.append(f"request_error:{str(e)}")
-                # Cannot proceed — treat current as final
-                path.append({"url": current, "status_code": None, "note": "request_failed"})
-                loop_detected = False
+                validate_url_for_fetch(current)
+            except ValueError as exc:
+                errors.append(f"unsafe_url:{exc}")
+                path.append({"url": current, "status_code": None, "note": "unsafe_url"})
+                resolution_state = "blocked"
                 break
 
-            # Append current response to path
+            response = None
+            try:
+                remaining = max(0.001, deadline - time.monotonic())
+                response = session.get(
+                    current,
+                    allow_redirects=False,
+                    timeout=min(timeout, remaining),
+                    stream=True,
+                )
+                status = response.status_code
+            except requests.Timeout as exc:
+                errors.append(f"request_timeout:{exc}")
+                path.append({"url": current, "status_code": None, "note": "request_timeout"})
+                resolution_state = "failed"
+                break
+            except Exception as exc:
+                errors.append(f"request_error:{exc}")
+                path.append({"url": current, "status_code": None, "note": "request_failed"})
+                resolution_state = "failed"
+                break
+
             path.append({"url": current, "status_code": status})
 
-            # Redirect status codes
-            if status in (301, 302, 303, 307, 308):
-                loc = resp.headers.get("Location")
-                if not loc:
-                    # No Location header — stop here
-                    loop_detected = False
-                    break
+            try:
+                if status in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
+                    if not location:
+                        resolution_state = "completed"
+                        break
 
-                # Resolve relative redirects
-                next_url = urljoin(current, loc)
+                    next_url = urljoin(current, location)
+                    if redirects_followed >= max_redirects:
+                        errors.append("redirect_limit_exceeded:max_redirects reached")
+                        path[-1]["note"] = "redirect_limit_exceeded"
+                        resolution_state = "limit_exceeded"
+                        break
 
-                # Prepare for next iteration
-                current = next_url
-                # Close response to free connection
-                try:
-                    resp.close()
-                except Exception:
-                    pass
+                    try:
+                        validate_url_for_fetch(next_url)
+                    except ValueError as exc:
+                        errors.append(f"unsafe_redirect:{exc}")
+                        path.append({"url": next_url, "status_code": None, "note": "unsafe_redirect"})
+                        resolution_state = "blocked"
+                        break
 
-                # Continue loop to follow next redirect
-                continue
-            else:
-                # Not a standard redirect — check for HTML meta-refresh
-                try:
-                    # Read only the first 4KB to find meta refresh tags
-                    partial_body = resp.content[:4096].decode('utf-8', errors='ignore')
-                    meta_url = _extract_meta_refresh(partial_body)
-                    if meta_url:
-                        next_url = urljoin(current, meta_url)
-                        path[-1]["note"] = "meta_refresh"
-                        current = next_url
-                        continue
-                except Exception:
-                    pass
-                
-                # No meta-refresh found — done
-                loop_detected = False
+                    current = next_url
+                    redirects_followed += 1
+                    continue
+
+                partial_body = _read_response_prefix(response, deadline=deadline).decode("utf-8", errors="ignore")
+                meta_url = _extract_meta_refresh(partial_body)
+                if meta_url:
+                    next_url = urljoin(current, meta_url)
+                    if redirects_followed >= max_redirects:
+                        errors.append("redirect_limit_exceeded:max_redirects reached")
+                        path[-1]["note"] = "redirect_limit_exceeded"
+                        resolution_state = "limit_exceeded"
+                        break
+
+                    try:
+                        validate_url_for_fetch(next_url)
+                    except ValueError as exc:
+                        errors.append(f"unsafe_meta_refresh:{exc}")
+                        path[-1]["note"] = "unsafe_meta_refresh"
+                        resolution_state = "blocked"
+                        break
+
+                    path[-1]["note"] = "meta_refresh"
+                    current = next_url
+                    redirects_followed += 1
+                    continue
+
+                resolution_state = "completed"
                 break
+            except requests.Timeout as exc:
+                if "total resolution budget" in str(exc):
+                    errors.append(f"total_timeout:{exc}")
+                    path[-1]["note"] = "total_timeout"
+                else:
+                    errors.append(f"response_timeout:{exc}")
+                    path[-1]["note"] = "response_timeout"
+                resolution_state = "failed"
+                break
+            except Exception as exc:
+                errors.append(f"response_read_error:{exc}")
+                path[-1]["note"] = "response_read_failed"
+                resolution_state = "failed"
+                break
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+    except Exception as exc:
+        errors.append(f"unwrap_error:{exc}")
+        resolution_state = "failed"
 
-        final_url = current
-    except Exception as e:
-        final_url = current
-        errors.append(f"unwrap_error:{str(e)}")
-        loop_detected = False
+    final_url = current
 
-    # Optional: try JS/meta refresh via headless browser if requested
-    if use_browser and not loop_detected:
+    if use_browser and resolution_state == "completed":
         try:
+            validate_url_for_fetch(final_url)
             chrome_options = Options()
-            chrome_options.add_argument("--headless=new" if hasattr(Options(), 'add_argument') else "--headless")
+            chrome_options.add_argument("--headless=new" if hasattr(Options(), "add_argument") else "--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
 
-            # Only attempt to use webdriver if available; do not auto-install in servers
             driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-            driver.set_page_load_timeout(timeout)
-            driver.get(final_url)
-
-            # Wait briefly for JS redirects (minimal wait)
-            time.sleep(1.5)
-
-            current_browser_url = driver.current_url
-            if current_browser_url and current_browser_url != final_url:
-                path.append({"url": current_browser_url, "status_code": "JS/Meta"})
-                final_url = current_browser_url
-
             try:
+                driver.set_page_load_timeout(timeout)
+                driver.get(final_url)
+                time.sleep(1.5)
+                current_browser_url = driver.current_url
+                if current_browser_url and current_browser_url != final_url:
+                    validate_url_for_fetch(current_browser_url)
+                    path.append({"url": current_browser_url, "status_code": "JS/Meta"})
+                    final_url = current_browser_url
+            finally:
                 driver.quit()
-            except Exception:
-                pass
-        except Exception as e:
-            errors.append(f"browser_error:{str(e)}")
+        except ValueError as exc:
+            errors.append(f"unsafe_browser_url:{exc}")
+            resolution_state = "blocked"
+        except Exception as exc:
+            errors.append(f"browser_error:{exc}")
+            resolution_state = "unavailable"
 
     suspicious = len(path) >= 3 or loop_detected
-
     return {
         "original_url": url,
         "final_url": final_url,
@@ -159,4 +294,5 @@ def unwrap_url(url: str, max_redirects: int = 5, timeout: int = 5, use_browser: 
         "loop_detected": bool(loop_detected),
         "suspicious_redirects": suspicious,
         "errors": errors,
+        "resolution_state": resolution_state,
     }

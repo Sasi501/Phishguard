@@ -17,8 +17,8 @@ export default function EnginePanel({ scores }: EnginePanelProps) {
   const entries = Object.entries(scores)
 
   return (
-    <section className="engine-panel glass-card" aria-label="Individual engine scores">
-      <h2 className="engine-panel__title">ENGINE ANALYSIS</h2>
+    <section className="engine-panel glass-card" aria-label="Individual engine signals, separate from the final ensemble score">
+      <h2 className="engine-panel__title">INDIVIDUAL ENGINE SIGNALS</h2>
       <div className="engine-panel__grid">
         {entries.map(([engine, score], index) => {
           const rounded = Math.round(score)

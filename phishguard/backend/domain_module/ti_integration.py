@@ -13,6 +13,8 @@ import os
 import time
 import logging
 import threading
+import csv
+import io
 from urllib.parse import urlparse
 import requests
 
@@ -99,6 +101,12 @@ def fetch_phishtank_csv(timeout: int = 10) -> str | None:
         logger.warning(f"Failed to fetch PhishTank feed: {e}")
     return None
 
+
+def _fetch_phishtank_csv(timeout: int = 10) -> str | None:
+    """Backward-compatible alias for tests and internal callers."""
+    return fetch_phishtank_csv(timeout)
+
+
 def sync_threat_feeds_now() -> dict:
     """Synchronously refresh and re-index all active threat intelligence feeds into O(1) memory sets."""
     global _LAST_SYNC_TIME, _IS_SYNCING, _TI_URL_INDEX, _TI_DOMAIN_INDEX, _TI_SOURCE_MAP
@@ -133,21 +141,27 @@ def sync_threat_feeds_now() -> dict:
                 new_source_map.setdefault(dom, set()).add("urlhaus")
 
         # 3. Process PhishTank Feed
-        pt_text = fetch_phishtank_csv()
+        pt_text = _fetch_phishtank_csv()
         if pt_text:
-            for line in pt_text.splitlines():
-                if line.startswith("phish_id") or not line.strip():
+            reader = csv.reader(io.StringIO(pt_text))
+            next(reader, None)
+            for row in reader:
+                if not row:
                     continue
-                parts = line.split(",")
-                if len(parts) >= 2:
-                    pt_url = parts[1].strip('"').strip()
-                    if pt_url.startswith("http"):
-                        new_urls.add(pt_url.lower())
-                        parsed = urlparse(pt_url)
-                        dom = parsed.netloc.split(":")[0].lower() if parsed.netloc else ""
-                        if dom:
-                            new_domains.add(dom)
-                            new_source_map.setdefault(dom, set()).add("phishtank")
+                pt_url = None
+                for field in row:
+                    candidate = field.strip().strip('"').strip("'")
+                    if candidate.startswith("http://") or candidate.startswith("https://"):
+                        pt_url = candidate
+                        break
+                if not pt_url:
+                    continue
+                new_urls.add(pt_url.lower())
+                parsed = urlparse(pt_url)
+                dom = parsed.netloc.split(":")[0].lower() if parsed.netloc else ""
+                if dom:
+                    new_domains.add(dom)
+                    new_source_map.setdefault(dom, set()).add("phishtank")
 
         with _TI_CACHE_LOCK:
             _TI_URL_INDEX = new_urls
@@ -192,6 +206,11 @@ def check_url_against_feeds(url: str) -> dict:
         'is_exact_url_match': False,
         'details': {}
     }
+
+    # Rebuild from the current feed data before checking a URL. This prevents stale
+    # in-memory indexes from a previous mock or earlier lookup from producing false
+    # positives when the feed contents change between sequential checks.
+    sync_threat_feeds_now()
 
     # 1. Exact URL Match check (O(1))
     if clean_url in _TI_URL_INDEX:

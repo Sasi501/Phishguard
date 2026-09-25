@@ -214,6 +214,50 @@
       color: var(--safe);
     }
 
+    /* Redirect evidence */
+    .redirect-box {
+      margin: 0 16px 16px;
+      padding: 12px 14px;
+    }
+    .redirect-title {
+      color: var(--color-neon-cyan);
+      font-family: var(--font-heading);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 9px;
+    }
+    .redirect-summary {
+      color: var(--color-text-main);
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .redirect-summary.warning { color: var(--color-neon-amber); }
+    .redirect-summary.failed { color: var(--color-neon-crimson); }
+    .redirect-destination {
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .redirect-destination strong { color: var(--color-text-main); font-family: var(--font-body); }
+    .redirect-flags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .redirect-flag {
+      border: 1px solid rgba(255,170,0,0.3);
+      border-radius: 4px;
+      color: var(--color-neon-amber);
+      font-family: var(--font-mono);
+      font-size: 9px;
+      padding: 3px 6px;
+    }
+
     /* URL preview */
     .url-box {
       margin: 0 16px 16px;
@@ -388,6 +432,13 @@
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>
     <span class="url-text" id="url-text"></span>
+  </div>
+
+  <div class="redirect-box glass-card" id="redirect-box" style="display:none">
+    <div class="redirect-title">Redirect Evidence</div>
+    <div class="redirect-summary" id="redirect-summary"></div>
+    <div class="redirect-destination" id="redirect-destination"></div>
+    <div class="redirect-flags" id="redirect-flags"></div>
   </div>
 
   <!-- Footer -->
