@@ -81,6 +81,8 @@ def expand_short_url(url: str, timeout: int = 5, max_redirects: int = 10, cache_
             "loop_detected": False,
             "suspicious_redirects": False,
             "errors": [f"unsafe_url:{exc}"],
+            "resolution_state": "blocked",
+            "blocked_reason": str(exc),
             "is_shortener": is_likely_shortener(url),
         }
 

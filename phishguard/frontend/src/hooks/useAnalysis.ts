@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AnalyzeRequest, AnalyzeResponse, UseAnalysisState } from '../types/api'
+import { normalizeAnalyzeResponse } from './analysisResponse'
 
 const API_URL = '/api/analyze-ensemble/'
 
@@ -46,9 +47,9 @@ export default function useAnalysis(): UseAnalysisState {
         throw new Error((err as Record<string, string>).detail ?? `Server error ${resp.status}`)
       }
 
-      const data: AnalyzeResponse = await resp.json()
-      // Clamp score to [0, 100] per Req 5.7
-      data.ensemble_score_percent = Math.min(100, Math.max(0, data.ensemble_score_percent))
+      const payload: unknown = await resp.json()
+      const data = normalizeAnalyzeResponse(payload)
+      if (!data) throw new Error('Analysis server returned an invalid response.')
 
       setState({ loading: false, result: data, error: null })
     } catch (e: unknown) {

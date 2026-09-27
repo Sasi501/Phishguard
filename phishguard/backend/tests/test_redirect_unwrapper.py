@@ -102,6 +102,16 @@ class RedirectUnwrapperTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_url_for_fetch("http://127.0.0.1/")
 
+    def test_loopback_resolution_is_reported_blocked_without_request(self):
+        with patch("socket.getaddrinfo", return_value=[
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 8000))
+        ]), patch("requests.Session.get") as mock_get:
+            result = unwrap_url("http://127.0.0.1:8000/api/scan/")
+
+        mock_get.assert_not_called()
+        self.assertEqual(result["resolution_state"], "blocked")
+        self.assertIn("127.0.0.1", result["blocked_reason"])
+
     def test_url_blocked_private_ip(self):
         with self.assertRaises(ValueError):
             validate_url_for_fetch("http://10.0.0.5/")

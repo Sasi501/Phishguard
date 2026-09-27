@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -9,11 +12,20 @@ import hmac
 import json
 import os
 import json
+import logging
 import secrets
 import time
 from urllib.parse import urlparse
 
 from db import init_db, get_db, hash_password, verify_password
+
+logger = logging.getLogger("phishguard.health")
+
+
+def _internal_error(exc: Exception) -> HTTPException:
+    """Log diagnostics server-side without disclosing internals to API clients."""
+    logger.error("Unhandled API error: %s", exc)
+    return HTTPException(status_code=500, detail="Internal server error.")
 
 # Import engines
 try:
@@ -177,10 +189,41 @@ class DomainRequest(BaseModel):
 
 @app.get("/api/health/")
 async def health_check():
+    database = get_db()
+    database_ready = False
+    database_reason = "MongoDB unavailable"
+    if database is not None:
+        try:
+            import asyncio
+            await asyncio.wait_for(database.command("ping"), timeout=0.3)
+            database_ready = True
+            database_reason = None
+        except Exception as exc:
+            logger.warning("MongoDB readiness check failed: %s", exc)
+
+    def readiness(ready: bool, reason: str | None = None) -> dict:
+        status = {"ready": ready}
+        if reason:
+            status["reason"] = reason
+        return status
+
     return {
         "status": "ok",
         "service": "PhishGuard FastAPI",
         "engines": {
+            "url_ml": readiness(ML_READY),
+            "nlp": readiness(NLP_READY),
+            "vision": readiness(VISION_READY),
+            "domain": readiness(DOMAIN_READY),
+            "xai": readiness(
+                ENSEMBLE_READY,
+                None if ENSEMBLE_READY else "XAI analysis implementation is unavailable",
+            ),
+            "hitl": readiness(
+                database_ready,
+                None if database_ready else database_reason,
+            ),
+            "database": readiness(database_ready, database_reason),
             "ml_ready": ML_READY,
             "nlp_ready": NLP_READY,
             "vision_ready": VISION_READY,
@@ -258,16 +301,26 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
 
 def _validate_url(url: str) -> None:
-    if not url or len(url) > MAX_URL_LENGTH:
-        raise HTTPException(status_code=400, detail=f'URL must be 1–{MAX_URL_LENGTH} characters')
-    parsed = urlparse(url)
-    if parsed.scheme not in ('http', 'https'):
-        raise HTTPException(status_code=400, detail='URL must use http or https scheme')
+    _validate_url_syntax(url)
     try:
         from domain_module.redirect_unwrapper import validate_url_for_fetch
         validate_url_for_fetch(url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f'Unsafe URL destination: {exc}') from exc
+
+
+def _validate_url_syntax(url: str) -> None:
+    if not url or len(url) > MAX_URL_LENGTH:
+        raise HTTPException(status_code=400, detail=f'URL must be 1–{MAX_URL_LENGTH} characters')
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise HTTPException(status_code=400, detail='URL must use http or https scheme')
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail='URL hostname is required')
+    try:
+        parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='URL port is invalid') from exc
 
 async def _validate_image(image: UploadFile) -> bytes:
     content_type = (image.content_type or '').lower()
@@ -291,7 +344,7 @@ async def analyze_text(request: TextRequest):
         result = analyze_text_with_nlp(request.text)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 @app.post("/api/analyze-vision/")
 async def analyze_vision(image: UploadFile = File(...)):
@@ -304,7 +357,7 @@ async def analyze_vision(image: UploadFile = File(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 
 @app.post('/api/screenshot/')
@@ -312,6 +365,7 @@ async def screenshot_endpoint(url: str = Form(...)):
     """Capture or generate a screenshot for the given URL. Returns JPEG bytes base64-encoded and metadata."""
     from vision_module.screenshot_pipeline import capture_screenshot
     try:
+        _validate_url(url)
         res = capture_screenshot(url)
         # Return metadata and base64-encoded image for simplicity
         import base64
@@ -326,8 +380,10 @@ async def screenshot_endpoint(url: str = Form(...)):
             'image_base64': img_b64,
             'error': res.get('error')
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 @app.get("/api/analyze-domain/")
 async def analyze_domain_help():
@@ -339,13 +395,13 @@ async def analyze_domain_help():
 async def analyze_domain_endpoint(request: DomainRequest):
     if not DOMAIN_READY:
         raise HTTPException(status_code=503, detail="Domain Engine is not available yet.")
-    _validate_url(request.url)
+    _validate_url_syntax(request.url)
         
     try:
         result = analyze_domain(request.url)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 @app.post("/api/unwrap-redirect/")
 async def unwrap_redirect_endpoint(request: DomainRequest):
@@ -354,7 +410,7 @@ async def unwrap_redirect_endpoint(request: DomainRequest):
     Returns the original URL, final destination, every hop in between,
     meta-refresh detections, shortener flags, and domain metadata.
     """
-    _validate_url(request.url)
+    _validate_url_syntax(request.url)
     
     try:
         from domain_module.shortener_expander import is_likely_shortener, expand_short_url
@@ -371,9 +427,21 @@ async def unwrap_redirect_endpoint(request: DomainRequest):
         
         final_url = unwrap_result.get("final_url", request.url)
         
-        # Get metadata for the final landing page
-        metadata = get_domain_metadata(final_url)
-        risk = calculate_domain_risk(metadata)
+        blocked = unwrap_result.get("resolution_state") == "blocked"
+        if blocked:
+            blocked_reason = unwrap_result.get("blocked_reason") or "Unsafe destination blocked by URL validation."
+            metadata = {"status": "restricted", "reason": blocked_reason}
+            risk = {
+                "status": "restricted",
+                "reason": blocked_reason,
+                "domain_score": None,
+                "domain_risk_level": "unavailable",
+                "domain_signals": [],
+                "metadata": metadata,
+            }
+        else:
+            metadata = get_domain_metadata(final_url)
+            risk = calculate_domain_risk(metadata)
         
         # Update stats safely
         try:
@@ -395,6 +463,8 @@ async def unwrap_redirect_endpoint(request: DomainRequest):
             "loop_detected": unwrap_result.get("loop_detected", False),
             "suspicious_redirects": unwrap_result.get("suspicious_redirects", False),
             "resolution_state": unwrap_result.get("resolution_state", "failed"),
+            "blocked_reason": unwrap_result.get("blocked_reason"),
+            "status": "restricted" if blocked else "available",
             "has_meta_refresh": any(
                 hop.get("note") == "meta_refresh" 
                 for hop in unwrap_result.get("redirect_chain", [])
@@ -404,7 +474,7 @@ async def unwrap_redirect_endpoint(request: DomainRequest):
             "errors": unwrap_result.get("errors", []),
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 # Registry endpoints
 @app.get('/api/registry/models/')
@@ -413,7 +483,7 @@ async def api_list_models():
         from registry.registry import list_models
         return list_models()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 
 @app.get('/api/registry/models/{name}/latest')
@@ -431,7 +501,7 @@ async def api_get_latest(name: str):
                 size = None
         return { 'metadata': meta, 'artifact_path': path, 'artifact_size': size }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 
 @app.get('/api/registry/models/{name}/versions')
@@ -473,7 +543,7 @@ async def api_get_artifact(name: str, version: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 
 @app.post('/api/registry/promote', dependencies=[Depends(require_admin)])
@@ -491,7 +561,7 @@ async def api_promote_model(name: str = Form(...), version: Optional[str] = Form
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 
 @app.post("/api/analyze-ensemble/")
@@ -502,29 +572,78 @@ async def analyze_ensemble(
 ):
     if not ENSEMBLE_READY:
         raise HTTPException(status_code=503, detail="Ensemble Engine is not available yet.")
-    _validate_url(url)
+    _validate_url_syntax(url)
     if text and len(text) > MAX_TEXT_LENGTH:
         raise HTTPException(status_code=400, detail=f'Text exceeds {MAX_TEXT_LENGTH} character limit')
     vision_image_bytes = None
+    vision_status = None
+    thumbnail_b64 = None
     if image:
         image_bytes = await _validate_image(image)
         vision_image_bytes = image_bytes
+        vision_status = {"status": "available", "applicable": True, "input_scope": "submitted_image"}
     else:
         try:
-            from vision_module.screenshot_pipeline import capture_screenshot
-            ss_res = capture_screenshot(url)
-            import base64
-            thumb = ss_res.get('thumb')
-            thumbnail_b64 = base64.b64encode(thumb).decode('ascii') if thumb else None
-            if ss_res.get('is_real_screenshot'):
-                vision_image_bytes = ss_res.get('image_bytes')
-        except Exception:
-            thumbnail_b64 = None
+            from vision_module.screenshot_pipeline import SCREENSHOT_ENABLED, capture_screenshot
+
+            # When screenshot capture is disabled, set vision_status immediately and skip the call.
+            if not SCREENSHOT_ENABLED:
+                vision_status = {
+                    "status": "unavailable",
+                    "reason": "Automatic screenshot acquisition is disabled (SCREENSHOT_ENABLED=False).",
+                    "applicable": False,
+                    "input_scope": "not_collected",
+                }
+            else:
+                # Screenshot enabled — check for SSRF block before proceeding.
+                try:
+                    from domain_module.redirect_unwrapper import validate_url_for_fetch
+                    validate_url_for_fetch(url)
+                except ValueError as exc:
+                    vision_status = {
+                        "status": "restricted",
+                        "reason": f"Screenshot acquisition blocked for unsafe network destination: {exc}",
+                        "applicable": True,
+                    }
+
+            if vision_status is None:
+                ss_res = capture_screenshot(url)
+                thumb = ss_res.get('thumb')
+                thumbnail_b64 = base64.b64encode(thumb).decode('ascii') if thumb else None
+                if ss_res.get('is_real_screenshot'):
+                    vision_image_bytes = ss_res.get('image_bytes')
+                    vision_status = {"status": "available", "applicable": True, "input_scope": "captured_screenshot"}
+                elif ss_res.get('error'):
+                    vision_status = {
+                        "status": "error",
+                        "reason": str(ss_res['error']),
+                        "applicable": SCREENSHOT_ENABLED,
+                        "input_scope": "captured_screenshot" if SCREENSHOT_ENABLED else "not_collected",
+                    }
+                else:
+                    vision_status = {
+                        "status": "unavailable",
+                        "reason": "Automatic screenshot acquisition did not produce a real screenshot.",
+                        "applicable": SCREENSHOT_ENABLED,
+                        "input_scope": "not_collected",
+                    }
+        except Exception as exc:
+            vision_status = {
+                "status": "error",
+                "reason": str(exc),
+                "applicable": bool(os.environ.get('SCREENSHOT_ENABLED') in ('1', 'true', 'True')),
+                "input_scope": "not_collected",
+            }
 
     try:
-        result = await calculate_ensemble_score(url, text=text, image_bytes=vision_image_bytes)
+        result = await calculate_ensemble_score(
+            url,
+            text=text,
+            image_bytes=vision_image_bytes,
+            vision_status=vision_status,
+        )
         # Attach thumbnail if we generated one server-side
-        if 'thumbnail_b64' in locals() and thumbnail_b64:
+        if thumbnail_b64:
             result['thumbnail_base64'] = thumbnail_b64
             
         # Update global stats safely
@@ -540,7 +659,7 @@ async def analyze_ensemble(
             
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _internal_error(e)
 
 # ─── Compatibility Scan Endpoint ────────────────────────────────────────────────────────
 

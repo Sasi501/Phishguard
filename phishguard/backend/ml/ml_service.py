@@ -10,7 +10,11 @@ import json
 import numpy as np
 from catboost import CatBoostClassifier
 
-from .feature_extractor import extract_features, FEATURE_NAMES
+from .feature_extractor import (
+    UNMODELED_FEATURE_NAMES,
+    extract_features,
+    validate_model_schema,
+)
 
 
 # Paths
@@ -43,9 +47,19 @@ class MLPredictor:
             )
 
         print(f"[PhishGuard ML] Loading CatBoost model from {MODEL_PATH}")
-        self._model = CatBoostClassifier()
-        self._model.load_model(MODEL_PATH)
-        print("[PhishGuard ML] Model loaded successfully!")
+        model = CatBoostClassifier()
+        model.load_model(MODEL_PATH)
+
+        # The trained model is the authoritative feature schema. Fail loudly
+        # on any drift instead of silently feeding a differently-ordered or
+        # differently-sized vector to the model.
+        self._feature_names = validate_model_schema(model.feature_names_)
+        self._model = model
+
+        print(
+            "[PhishGuard ML] Model loaded successfully "
+            f"({len(self._feature_names)} features)."
+        )
 
         # Load metrics if available
         if os.path.exists(METRICS_PATH):
@@ -60,15 +74,18 @@ class MLPredictor:
             {
                 "ml_score": float (0.0 to 1.0, probability of phishing),
                 "ml_risk_level": "safe" | "suspicious" | "phishing",
-                "ml_features": { feature_name: value, ... },
-                "ml_top_features": [ { "feature": name, "value": val, "importance": imp }, ... ]
+                "ml_features": { feature_name: value, ... },   # model inputs only
+                "ml_unmodeled_features": { feature_name: value, ... },  # analysis only
+                "shap_features": [ { "feature": name, "value": val,
+                                     "shap_value": sv }, ... ]  # model inputs only
             }
         """
         self._load_model()
 
-        # Extract features
+        # Extract features and build the vector in the model's own order.
         features = extract_features(url)
-        feature_values = [features[name] for name in FEATURE_NAMES]
+        model_names = self._feature_names
+        feature_values = [features[name] for name in model_names]
 
         # Predict
         prob = self._model.predict_proba([feature_values])[0]
@@ -95,7 +112,7 @@ class MLPredictor:
                     "value": features[name],
                     "shap_value": round(float(val), 4),
                 }
-                for name, val in zip(FEATURE_NAMES, shap_vals)
+                for name, val in zip(model_names, shap_vals)
             ]
             
             # For phishing, we want to explain what pushed the score UP (positive shap_value)
@@ -123,7 +140,7 @@ class MLPredictor:
                         "value": features[name],
                         "importance": round(float(imp), 2),
                     }
-                    for name, imp in zip(FEATURE_NAMES, feature_importance)
+                    for name, imp in zip(model_names, feature_importance)
                 ],
                 key=lambda x: x.get("importance", 0),
                 reverse=True,
@@ -132,7 +149,13 @@ class MLPredictor:
         return {
             "ml_score": round(phishing_prob, 4),
             "ml_risk_level": risk_level,
-            "ml_features": features,
+            # Exactly the features the model consumed, in the model's order.
+            "ml_features": {name: features[name] for name in model_names},
+            # URL-analysis signals the trained model does NOT use. Kept
+            # separate so they can never be mistaken for model evidence.
+            "ml_unmodeled_features": {
+                name: features[name] for name in UNMODELED_FEATURE_NAMES
+            },
             "shap_features": top_features,
         }
 

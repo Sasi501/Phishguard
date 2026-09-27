@@ -103,6 +103,8 @@ def capture_screenshot(url: str, timeout: int = 10) -> Dict[str, Any]:
             }
 
         # Real screenshot path — Use a reliable public screenshot API instead of brittle local Selenium
+        from domain_module.redirect_unwrapper import validate_url_for_fetch
+        validate_url_for_fetch(url)
         import requests
         api_url = f"https://image.thum.io/get/width/1200/crop/800/{url}"
         resp = requests.get(api_url, timeout=timeout)

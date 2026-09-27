@@ -53,7 +53,9 @@ export default function ThreatIntelligence({ xai }: ThreatIntelligenceProps) {
       <div className="threat-intelligence__summary">
         <div className="threat-intelligence__summary-item">
           <span className="threat-intelligence__label">Status</span>
-          <strong className="threat-intelligence__value">{backendStatus ?? 'Unavailable'}</strong>
+          <strong className="threat-intelligence__value">
+            {backendStatus ?? (signal?.status === 'restricted' ? 'Restricted' : signal?.status ?? 'Unavailable')}
+          </strong>
         </div>
         <div className="threat-intelligence__summary-item">
           <span className="threat-intelligence__label">Risk</span>
@@ -82,6 +84,9 @@ export default function ThreatIntelligence({ xai }: ThreatIntelligenceProps) {
               <span>{backendStatus}</span>
             </div>
           )}
+          {signal.status && signal.status !== 'available' && signal.reason && (
+            <p className="threat-intelligence__empty">{signal.reason}</p>
+          )}
 
           {scoreValue !== null && (
             <div className="threat-intelligence__meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scoreValue)} aria-label={`Threat intelligence score ${Math.round(scoreValue)} percent`}>
@@ -101,11 +106,7 @@ export default function ThreatIntelligence({ xai }: ThreatIntelligenceProps) {
           )}
         </div>
       ) : (
-        <p className="threat-intelligence__empty">No threat-intelligence result returned.</p>
-      )}
-
-      {!signal && (
-        <p className="threat-intelligence__empty secondary">Unavailable</p>
+        <p className="threat-intelligence__empty">Threat intelligence evidence unavailable for this scan.</p>
       )}
     </section>
   )

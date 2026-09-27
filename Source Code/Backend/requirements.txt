@@ -1,0 +1,39 @@
+django>=5.0
+djangorestframework>=3.14
+django-cors-headers>=4.3
+google-genai>=1.0.0
+python-dotenv>=1.0.0
+gunicorn>=21.0.0
+
+django-mongodb-backend
+pymongo[srv]>=4.0.0
+motor>=3.3.0
+
+# ML Engine (Module 1)
+catboost>=1.2
+scikit-learn>=1.3
+shap>=0.43
+pandas>=2.0
+numpy>=1.24
+tldextract>=5.0
+optuna>=3.0
+
+# NLP Engine (Module 2)
+transformers
+torch
+datasets
+
+# Vision Engine (Module 3)
+torchvision
+pillow
+
+# Domain Engine (Module 4)
+requests
+python-whois
+selenium
+webdriver-manager
+uvicorn>=0.27.0
+fastapi>=0.115.0
+python-multipart>=0.0.9
+redis>=5.0  # optional: set REDIS_URL env var to enable distributed rate limiting
+langdetect>=1.0.9  # language detection for multilingual NLP routing

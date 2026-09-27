@@ -9,11 +9,13 @@ const resources = {
         "registry": "Registry",
         "hitl": "HITL Review",
         "settings": "Settings",
-        "system_online": "SYSTEM ONLINE"
+        "core_online": "CORE SYSTEM ONLINE",
+        "core_checking": "CHECKING CORE STATUS",
+        "core_unavailable": "CORE STATUS UNAVAILABLE"
       },
       "hero": {
         "title": "Welcome to PhishGuard",
-        "subtitle": "AI-Powered Phishing URL Detection",
+        "subtitle": "Multi-Modal Intelligence for Phishing Detection",
         "threats_blocked": "Threats Blocked",
         "total_scans": "Total Scans",
         "active_engines": "Active Engines",
@@ -47,7 +49,9 @@ const resources = {
         "registry": "रजिस्ट्री",
         "hitl": "HITL समीक्षा",
         "settings": "सेटिंग्स",
-        "system_online": "सिस्टम ऑनलाइन"
+        "core_online": "मुख्य सिस्टम ऑनलाइन",
+        "core_checking": "मुख्य सिस्टम स्थिति जांच रहे हैं",
+        "core_unavailable": "मुख्य सिस्टम स्थिति अनुपलब्ध"
       },
       "hero": {
         "title": "PhishGuard में आपका स्वागत है",
@@ -85,7 +89,9 @@ const resources = {
         "registry": "பதிவேடு",
         "hitl": "HITL ஆய்வு",
         "settings": "அமைப்புகள்",
-        "system_online": "கணினி இயங்குகிறது"
+        "core_online": "முக்கிய அமைப்பு இயங்குகிறது",
+        "core_checking": "முக்கிய அமைப்பு நிலையைச் சரிபார்க்கிறது",
+        "core_unavailable": "முக்கிய அமைப்பு நிலை கிடைக்கவில்லை"
       },
       "hero": {
         "title": "PhishGuard க்கு வரவேற்கிறோம்",
@@ -123,7 +129,9 @@ const resources = {
         "registry": "Registre",
         "hitl": "Revue HITL",
         "settings": "Paramètres",
-        "system_online": "SYSTÈME EN LIGNE"
+        "core_online": "SYSTÈME PRINCIPAL EN LIGNE",
+        "core_checking": "VÉRIFICATION DU SYSTÈME PRINCIPAL",
+        "core_unavailable": "ÉTAT DU SYSTÈME PRINCIPAL INDISPONIBLE"
       },
       "hero": {
         "title": "Bienvenue sur PhishGuard",

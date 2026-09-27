@@ -50,6 +50,40 @@ class DomainServiceRedirectTests(unittest.TestCase):
         self.assertEqual(result["redirect_analysis"]["final_url"], "https://landing.example/login")
         self.assertEqual(result["final_url"], "https://landing.example/login")
 
+    @patch("domain_module.domain_service.get_domain_metadata")
+    @patch("domain_module.ti_integration.check_url_against_feeds")
+    @patch("domain_module.domain_service.unwrap_url")
+    def test_loopback_restriction_skips_metadata_and_returns_partial_evidence(
+        self,
+        mock_unwrap,
+        mock_ti,
+        mock_metadata,
+    ):
+        url = "http://127.0.0.1:8000/api/scan/"
+        reason = "Unsafe destination resolved to blocked address: 127.0.0.1"
+        mock_unwrap.return_value = {
+            "original_url": url,
+            "final_url": url,
+            "redirect_chain": [{"url": url, "status_code": None, "note": "unsafe_url"}],
+            "num_redirects": 0,
+            "loop_detected": False,
+            "suspicious_redirects": False,
+            "resolution_state": "blocked",
+            "blocked_reason": reason,
+            "errors": [f"unsafe_url:{reason}"],
+        }
+        mock_ti.return_value = {"ti_hits": 0, "ti_sources": []}
+
+        result = domain_service.analyze_domain(url, cache_ttl=0)
+
+        mock_metadata.assert_not_called()
+        mock_ti.assert_called_once_with(url)
+        self.assertEqual(result["status"], "restricted")
+        self.assertIsNone(result["domain_score"])
+        self.assertEqual(result["redirect_analysis"]["resolution_state"], "blocked")
+        self.assertEqual(result["redirect_analysis"]["blocked_reason"], reason)
+        self.assertEqual(result["ti_status"]["status"], "available")
+
 
 if __name__ == "__main__":
     unittest.main()

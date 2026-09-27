@@ -37,26 +37,6 @@ function useCountUp(end: number, duration: number = 1000) {
   return count;
 }
 
-function useTypewriter(text: string, speed: number = 30) {
-  const [displayedText, setDisplayedText] = useState('');
-
-  useEffect(() => {
-    let i = 0;
-    setDisplayedText('');
-    const timer = setInterval(() => {
-      if (i < text.length) {
-        setDisplayedText((prev) => prev + text.charAt(i));
-        i++;
-      } else {
-        clearInterval(timer);
-      }
-    }, speed);
-    return () => clearInterval(timer);
-  }, [text, speed]);
-
-  return displayedText;
-}
-
 const ShieldIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -88,34 +68,42 @@ const CpuIcon = () => (
 
 export default function HeroDashboard({ onStartScan }: HeroDashboardProps) {
   const { t } = useTranslation()
-  const [threatsBlocked, setThreatsBlocked] = useState(0)
-  const [totalScans, setTotalScans] = useState(0)
-  const [activeEngines, setActiveEngines] = useState(5)
+  const [threatsBlocked, setThreatsBlocked] = useState<number | null>(null)
+  const [totalScans, setTotalScans] = useState<number | null>(null)
+  const [activeEngines, setActiveEngines] = useState<number | null>(null)
+  const [statsAvailable, setStatsAvailable] = useState(false)
 
-  const animatedThreats = useCountUp(threatsBlocked)
-  const animatedScans = useCountUp(totalScans)
-  const animatedEngines = useCountUp(activeEngines)
-  
-  const typedSubtitle = useTypewriter(t('hero.subtitle'), 40)
+  const animatedThreats = useCountUp(threatsBlocked ?? 0)
+  const animatedScans = useCountUp(totalScans ?? 0)
+  const animatedEngines = useCountUp(activeEngines ?? 0)
 
   // Fetch real stats from the backend
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/stats/')
-        if (response.ok) {
-          const data = await response.json()
-          setTotalScans(data.total_scans)
-          setThreatsBlocked(data.threats_blocked)
-          setActiveEngines(data.active_engines)
-        }
-      } catch (err) {
-        console.error('Failed to fetch global stats', err)
+        const response = await fetch('/api/stats/')
+        if (!response.ok) throw new Error(`Stats request failed: ${response.status}`)
+        const data: unknown = await response.json()
+        if (!data || typeof data !== 'object') throw new Error('Stats response is invalid')
+
+        const stats = data as Record<string, unknown>
+        const total = stats.total_scans
+        const threats = stats.threats_blocked
+        const engines = stats.active_engines
+        setTotalScans(typeof total === 'number' && Number.isFinite(total) ? total : null)
+        setThreatsBlocked(typeof threats === 'number' && Number.isFinite(threats) ? threats : null)
+        setActiveEngines(typeof engines === 'number' && Number.isFinite(engines) ? engines : null)
+        setStatsAvailable(true)
+      } catch {
+        setTotalScans(null)
+        setThreatsBlocked(null)
+        setActiveEngines(null)
+        setStatsAvailable(false)
       }
     }
 
-    fetchStats() // initial fetch
-    const interval = setInterval(fetchStats, 5000) // update every 5s
+    void fetchStats()
+    const interval = setInterval(() => void fetchStats(), 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -129,23 +117,23 @@ export default function HeroDashboard({ onStartScan }: HeroDashboardProps) {
           {t('hero.title')}
         </h1>
         <p className="hero-dashboard__subtitle">
-          {typedSubtitle}<span className="hero-dashboard__cursor">_</span>
+          {t('hero.subtitle')}
         </p>
 
         <div className="hero-dashboard__stats">
           <div className="hero-stat glass-card card-1">
             <div className="hero-stat__icon text-neon-crimson"><ShieldIcon /></div>
-            <span className="hero-stat__value text-neon-crimson">{animatedThreats.toLocaleString()}</span>
+            <span className="hero-stat__value text-neon-crimson">{statsAvailable && threatsBlocked !== null ? animatedThreats.toLocaleString() : 'Unavailable'}</span>
             <span className="hero-stat__label">{t('hero.threats_blocked')}</span>
           </div>
           <div className="hero-stat glass-card card-2">
             <div className="hero-stat__icon text-neon-cyan"><ScanIcon /></div>
-            <span className="hero-stat__value text-neon-cyan">{animatedScans.toLocaleString()}</span>
+            <span className="hero-stat__value text-neon-cyan">{statsAvailable && totalScans !== null ? animatedScans.toLocaleString() : 'Unavailable'}</span>
             <span className="hero-stat__label">{t('hero.total_scans')}</span>
           </div>
           <div className="hero-stat glass-card card-3">
             <div className="hero-stat__icon text-neon-green"><CpuIcon /></div>
-            <span className="hero-stat__value text-neon-green">{animatedEngines}</span>
+            <span className="hero-stat__value text-neon-green">{statsAvailable && activeEngines !== null ? animatedEngines : 'Unavailable'}</span>
             <span className="hero-stat__label">{t('hero.active_engines')}</span>
           </div>
         </div>

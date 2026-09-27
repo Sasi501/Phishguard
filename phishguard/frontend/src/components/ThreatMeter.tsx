@@ -5,7 +5,7 @@ import ThreatBadge from './ThreatBadge'
 import './ThreatMeter.css'
 
 interface ThreatMeterProps {
-  score: number       // already clamped 0–100
+  score: number | null       // already clamped 0–100 when available
   riskLevel: RiskLevel
 }
 
@@ -17,17 +17,24 @@ function easeOut(t: number): number {
 
 export default function ThreatMeter({ score, riskLevel }: ThreatMeterProps) {
   const arcRef = useRef<SVGCircleElement>(null)
-  const [animatedScore, setAnimatedScore] = useState(0)
+  const [animatedScore, setAnimatedScore] = useState<number | null>(null)
+  const validScore = typeof score === 'number' && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null
 
   useEffect(() => {
+    if (validScore === null) {
+      if (arcRef.current) arcRef.current.style.strokeDashoffset = String(CIRCUMFERENCE)
+      setAnimatedScore(null)
+      return
+    }
+    const scoreToAnimate = validScore
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
     if (prefersReducedMotion) {
       // Set final state immediately, no animation
       if (arcRef.current) {
-        arcRef.current.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - score / 100))
+        arcRef.current.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - scoreToAnimate / 100))
       }
-      setAnimatedScore(Math.round(score))
+      setAnimatedScore(Math.round(scoreToAnimate))
       return
     }
 
@@ -38,7 +45,7 @@ export default function ThreatMeter({ score, riskLevel }: ThreatMeterProps) {
       const elapsed = now - startTime
       const t = Math.min(elapsed / DURATIONS.arcFill, 1)
       const easedT = easeOut(t)
-      const current = easedT * score
+      const current = easedT * scoreToAnimate
 
       if (arcRef.current) {
         arcRef.current.style.strokeDashoffset = String(CIRCUMFERENCE * (1 - current / 100))
@@ -52,14 +59,14 @@ export default function ThreatMeter({ score, riskLevel }: ThreatMeterProps) {
 
     rafId = requestAnimationFrame(step)
     return () => cancelAnimationFrame(rafId)
-  }, [score, riskLevel])
+  }, [validScore, riskLevel])
 
   const arcColor = RISK_COLORS[riskLevel] ?? '#888'
 
   return (
     <figure
       className="threat-meter"
-      aria-label={`Threat score: ${score}% — ${riskLevel}`}
+      aria-label={`Threat score: ${validScore === null ? 'unavailable' : `${validScore}%`} — ${riskLevel}`}
     >
       <div className="threat-meter__gauge-wrapper">
         <svg
@@ -95,7 +102,9 @@ export default function ThreatMeter({ score, riskLevel }: ThreatMeterProps) {
           />
         </svg>
         <div className="threat-meter__center">
-          <span className="threat-meter__score">{animatedScore}</span>
+          <span className={`threat-meter__score${animatedScore === null ? ' threat-meter__score--unavailable' : ''}`}>
+            {animatedScore === null ? 'Unavailable' : animatedScore}
+          </span>
           <span className="threat-meter__label">THREAT LEVEL</span>
         </div>
       </div>

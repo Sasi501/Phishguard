@@ -47,6 +47,14 @@
   vertical-align: super;
 }
 
+.threat-meter__score--unavailable {
+  font-size: 1.2rem;
+}
+
+.threat-meter__score--unavailable::after {
+  content: '';
+}
+
 .threat-meter__label {
   font-family: var(--font-heading);
   font-size: 0.75rem;

@@ -42,28 +42,32 @@ export default function ScanHistory({ entries, onSelect }: ScanHistoryProps) {
         className={`scan-history__list${expanded ? ' scan-history__list--expanded' : ''}`}
         aria-live="polite"
       >
-        {entries.map(entry => (
-          <button
-            key={entry.id}
-            type="button"
-            className="scan-history__entry"
-            onClick={() => onSelect(entry)}
-            aria-label={`View scan result for ${entry.url}, risk: ${entry.result.ensemble_risk_level}, score: ${(Math.round(entry.result.ensemble_score_percent * 10) / 10).toFixed(1)}%`}
-          >
-            <span className="scan-history__entry-url" title={entry.url}>
-              {truncateUrl(entry.url, SIZES.urlTruncate)}
-            </span>
-            <span className="scan-history__entry-meta">
-              <ThreatBadge riskLevel={entry.result.ensemble_risk_level} size="small" />
-              <span className="scan-history__entry-score">
-                {(Math.round(entry.result.ensemble_score_percent * 10) / 10).toFixed(1)}%
+        {entries.map(entry => {
+          const score = typeof entry.result.ensemble_score_percent === 'number' &&
+            Number.isFinite(entry.result.ensemble_score_percent)
+            ? `${(Math.round(entry.result.ensemble_score_percent * 10) / 10).toFixed(1)}%`
+            : 'Unavailable'
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              className="scan-history__entry"
+              onClick={() => onSelect(entry)}
+              aria-label={`View scan result for ${entry.url}, risk: ${entry.result.ensemble_risk_level}, score: ${score}`}
+            >
+              <span className="scan-history__entry-url" title={entry.url}>
+                {truncateUrl(entry.url, SIZES.urlTruncate)}
               </span>
-              <span className="scan-history__entry-time">
-                {formatTimestamp(entry.timestamp)}
+              <span className="scan-history__entry-meta">
+                <ThreatBadge riskLevel={entry.result.ensemble_risk_level} size="small" />
+                <span className="scan-history__entry-score">{score}</span>
+                <span className="scan-history__entry-time">
+                  {formatTimestamp(entry.timestamp)}
+                </span>
               </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          )
+        })}
       </div>
     </section>
   )

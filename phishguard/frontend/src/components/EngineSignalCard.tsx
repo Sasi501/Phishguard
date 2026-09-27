@@ -36,7 +36,7 @@ export default function EngineSignalCard({ signal }: EngineSignalCardProps) {
   const riskLabel = normalizeRiskLabel(signal.risk_level)
   const tone = toneForRisk(signal.risk_level)
   const scoreValue = typeof signal.score === 'number' && Number.isFinite(signal.score) ? signal.score : null
-  const scoreText = scoreValue !== null ? `${Math.round(scoreValue)}%` : null
+  const scoreText = scoreValue !== null ? `${scoreValue.toFixed(2)}%` : null
   const hasMatchStatus = Boolean(signal.match_status)
 
   const matchText = hasMatchStatus
@@ -49,6 +49,13 @@ export default function EngineSignalCard({ signal }: EngineSignalCardProps) {
 
   const displayStatus = matchText ?? (scoreText ?? 'NOT ANALYZED')
   const numericWidth = scoreValue === null ? 0 : Math.min(100, Math.max(0, scoreValue))
+  const statusLabel = signal.status === 'restricted'
+    ? 'RESTRICTED'
+    : signal.status === 'error'
+      ? 'ERROR'
+      : signal.status === 'unavailable'
+        ? 'UNAVAILABLE'
+        : 'NOT ANALYZED'
 
   return (
     <article
@@ -65,7 +72,7 @@ export default function EngineSignalCard({ signal }: EngineSignalCardProps) {
           {scoreText}
         </div>
       ) : (
-        <div className="engine-signal-card__status-text">Unavailable</div>
+        <div className="engine-signal-card__status-text">{statusLabel}</div>
       )}
 
       {scoreValue !== null && (
@@ -74,7 +81,7 @@ export default function EngineSignalCard({ signal }: EngineSignalCardProps) {
           role="meter"
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuenow={Math.round(scoreValue)}
+          aria-valuenow={scoreValue}
           aria-label={`${title} signal strength ${scoreText}`}
         >
           <div className="engine-signal-card__meter-fill" style={{ width: `${numericWidth}%` }} />
@@ -105,7 +112,7 @@ export default function EngineSignalCard({ signal }: EngineSignalCardProps) {
       )}
 
       {!signal.sources?.length && !matchText && !scoreText && (
-        <p className="engine-signal-card__meta">Not analyzed for this scan.</p>
+        <p className="engine-signal-card__meta">{signal.reason || 'Not analyzed for this scan.'}</p>
       )}
 
       {!matchText && !scoreText && (

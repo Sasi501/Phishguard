@@ -67,7 +67,11 @@ export default function DomainIntelligence({ url, xai }: DomainIntelligenceProps
         <div className="domain-intelligence__summary-item">
           <span className="domain-intelligence__label">Status</span>
           <strong className="domain-intelligence__value domain-intelligence__value--status">
-            {domainSignal ? normalizeRiskString(domainSignal.risk_level) : 'UNAVAILABLE'}
+            {domainSignal?.status === 'restricted'
+              ? 'RESTRICTED'
+              : domainSignal
+                ? normalizeRiskString(domainSignal.risk_level)
+                : 'UNAVAILABLE'}
           </strong>
         </div>
         {scoreValue !== null && (
@@ -84,6 +88,9 @@ export default function DomainIntelligence({ url, xai }: DomainIntelligenceProps
             <span>Domain Risk Signal · Final URL</span>
             <strong>{normalizeRiskString(domainSignal.risk_level)}</strong>
           </div>
+          {domainSignal.status && domainSignal.status !== 'available' && domainSignal.reason && (
+            <p className="domain-intelligence__empty">{domainSignal.reason}</p>
+          )}
           {scoreValue !== null && (
             <div className="domain-intelligence__meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scoreValue)} aria-label={`Domain intelligence score ${Math.round(scoreValue)} percent`}>
               <div className={`domain-intelligence__meter-fill domain-intelligence__meter-fill--${riskTone(domainSignal.risk_level)}`} style={{ width: `${scoreValue}%` }} />

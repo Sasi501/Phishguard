@@ -1,0 +1,14 @@
+{
+  "name": "phishguard-workspace",
+  "version": "2.0.0",
+  "description": "PhishGuard AI Cybersecurity Ensemble Workspace",
+  "scripts": {
+    "start": "python run.py",
+    "dev": "python run.py",
+    "backend": "cd backend && venv_win\\Scripts\\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload",
+    "frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build"
+  },
+  "author": "PhishGuard Team",
+  "license": "MIT"
+}

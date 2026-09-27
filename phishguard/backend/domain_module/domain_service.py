@@ -49,6 +49,7 @@ def _build_redirect_analysis(original_url: str, unwrap_result: dict) -> dict:
         "has_meta_refresh": any(hop.get("note") == "meta_refresh" for hop in chain),
         "resolution_state": unwrap_result.get("resolution_state", "failed"),
         "errors": unwrap_result.get("errors", []) or [],
+        "blocked_reason": unwrap_result.get("blocked_reason"),
     }
 
 
@@ -91,24 +92,84 @@ def analyze_domain(
 
     final_url = redirect_analysis["final_url"]
 
+    if redirect_analysis["resolution_state"] == "blocked":
+        reason = redirect_analysis.get("blocked_reason") or "Unsafe destination blocked by URL validation."
+        ti_details = None
+        ti_status = {
+            "status": "unavailable",
+            "reason": "Threat-intelligence lookup was not completed.",
+            "url_scope": "original_url",
+        }
+        try:
+            from .ti_integration import check_url_against_feeds
+            ti_details = check_url_against_feeds(url)
+            ti_status = {
+                "status": ti_details.get("status", "available"),
+                "url_scope": "original_url",
+            }
+            if ti_details.get("reason"):
+                ti_status["reason"] = ti_details["reason"]
+            if ti_details.get("unavailable_sources"):
+                ti_status["unavailable_sources"] = ti_details["unavailable_sources"]
+        except Exception as exc:
+            ti_status = {"status": "error", "reason": str(exc), "url_scope": "original_url"}
+
+        restricted_result = {
+            "status": "restricted",
+            "reason": reason,
+            "domain_score": None,
+            "domain_risk_level": "unavailable",
+            "domain_signals": [],
+            "metadata": {"status": "restricted", "reason": reason},
+            "ti_status": ti_status,
+            "ti_details": ti_details,
+            "redirect_chain": redirect_analysis["redirect_chain"],
+            "original_url": url,
+            "final_url": final_url,
+            "redirect_analysis": redirect_analysis,
+            "warnings": redirect_analysis["errors"],
+        }
+        _cache_set(cache_key, restricted_result, ttl=cache_ttl)
+        return dict(restricted_result)
+
     # 2. Get Metadata for the final URL
     metadata = get_domain_metadata(final_url)
 
-    # 3. Calculate Risk
-    risk_result = calculate_domain_risk(metadata)
-
-    # 4. Check Threat Intelligence Feeds (OpenPhish, PhishTank, URLhaus)
+    # 3. Check Threat Intelligence Feeds (OpenPhish, PhishTank, URLhaus).
+    #    This is the single TI lookup for a scan — the result is passed into
+    #    calculate_domain_risk() so domain_intelligence never performs its own
+    #    separate TI call (which previously used the wrong URL scope).
+    ti_status = {
+        "status": "unavailable",
+        "reason": "Threat-intelligence result was not returned.",
+        "url_scope": "final_url",
+    }
+    ti_res: dict | None = None
     try:
         from .ti_integration import check_url_against_feeds
         ti_res = check_url_against_feeds(final_url)
-        if ti_res.get('ti_hits', 0) > 0:
-            risk_result["domain_score"] = 1.0
-            risk_result["domain_risk_level"] = "phishing"
-            sources = ", ".join(ti_res.get('ti_sources', ['blacklisted']))
-            risk_result.setdefault("domain_signals", []).append(f"threat_intel_match:{sources}")
-            risk_result["ti_details"] = ti_res
-    except Exception:
-        pass
+        ti_status = {
+            "status": ti_res.get("status", "available"),
+            "url_scope": "final_url",
+        }
+        if ti_res.get("reason"):
+            ti_status["reason"] = ti_res["reason"]
+        if ti_res.get("unavailable_sources"):
+            ti_status["unavailable_sources"] = ti_res["unavailable_sources"]
+    except Exception as exc:
+        ti_status = {"status": "error", "reason": str(exc), "url_scope": "final_url"}
+
+    # 4. Calculate Risk — pass the TI result so domain_intelligence incorporates
+    #    TI evidence without performing a second lookup.
+    risk_result = calculate_domain_risk(metadata, ti_result=ti_res)
+
+    # Promote TI details into the top-level result for ensemble consumption.
+    if ti_res is not None and ti_res.get("ti_hits", 0) > 0:
+        risk_result["domain_score"] = 1.0
+        risk_result["domain_risk_level"] = "phishing"
+        sources = ", ".join(ti_res.get("ti_sources", ["blacklisted"]))
+        risk_result.setdefault("domain_signals", []).append(f"threat_intel_match:{sources}")
+        risk_result["ti_details"] = ti_res
 
     # Combine redirect signals
     if redirect_analysis.get("suspicious_redirects"):
@@ -126,6 +187,8 @@ def analyze_domain(
     risk_result["original_url"] = url
     risk_result["final_url"] = final_url
     risk_result["redirect_analysis"] = redirect_analysis
+    risk_result["status"] = "available"
+    risk_result["ti_status"] = ti_status
 
     # Attach any unwrap errors for observability
     if redirect_analysis["errors"]:

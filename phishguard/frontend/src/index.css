@@ -80,13 +80,22 @@ body {
     animation-iteration-count: 1      !important;
     transition-duration:       0.01ms !important;
   }
+
+  :root.reduced-motion *,
+  :root.reduced-motion *::before,
+  :root.reduced-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ---------------------------------------------------------------------------
    6. Shared Keyframe Animations
    --------------------------------------------------------------------------- */
 
-/* NavigationBar "SYSTEM ONLINE" pulse */
+/* NavigationBar core status pulse */
 @keyframes pg-pulse {
   0%, 100% { opacity: 1;   transform: scale(1);    }
   50%       { opacity: 0.4; transform: scale(0.95); }

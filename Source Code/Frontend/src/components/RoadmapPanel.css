@@ -1,0 +1,19 @@
+.roadmap-panel {
+  position: fixed;
+  right: 16px;
+  top: 64px;
+  width: 360px;
+  max-height: 70vh;
+  overflow: auto;
+  background: rgba(255,255,255,0.96);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  padding: 16px;
+  z-index: 2000;
+  font-size: 14px;
+}
+
+.roadmap-panel h2 { margin-top: 0; font-size: 16px }
+.roadmap-panel ol { padding-left: 18px }
+.roadmap-panel li { margin-bottom: 8px }
+.roadmap-panel ul { margin: 6px 0 0 14px }

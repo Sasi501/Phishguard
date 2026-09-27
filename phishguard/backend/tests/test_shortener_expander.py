@@ -28,6 +28,19 @@ class ShortenerExpanderTests(unittest.TestCase):
         self.assertEqual(res["final_url"], "http://landing.example/")
         self.assertTrue(res["is_shortener"]) 
 
+    @patch("domain_module.shortener_expander.unwrap_url")
+    @patch(
+        "domain_module.shortener_expander.validate_url_for_fetch",
+        side_effect=ValueError("Unsafe destination resolved to blocked address: 127.0.0.1"),
+    )
+    def test_private_shortener_is_structured_blocked_without_following(self, mock_validate, mock_unwrap):
+        result = expand_short_url("http://bit.ly/unsafe")
+
+        mock_validate.assert_called_once()
+        mock_unwrap.assert_not_called()
+        self.assertEqual(result["resolution_state"], "blocked")
+        self.assertIn("127.0.0.1", result["blocked_reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@ ML_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_PATH = os.path.join(ML_DIR, "data", "dataset.csv")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ml.feature_extractor import extract_features, FEATURE_NAMES
+from ml.feature_extractor import extract_features, FEATURE_NAMES, MODEL_FEATURE_NAMES
 
 def verify_reproducibility():
     print("=" * 60)
@@ -42,7 +42,7 @@ def verify_reproducibility():
         except Exception:
             features.append({name: 0 for name in FEATURE_NAMES})
 
-    X = pd.DataFrame(features)
+    X = pd.DataFrame(features)[list(MODEL_FEATURE_NAMES)]
     y = sample["label"].values
 
     # Train/test split with deterministic state

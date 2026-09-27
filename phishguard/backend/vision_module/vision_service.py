@@ -102,11 +102,7 @@ class VisionService:
                     gradcam_features.append({"feature": "Spoofed top-left brand logo", "gradcam_activation": float(grayscale_cam[0:50, 0:50].max())})
                 
         except ImportError:
-            # Fallback mock if pytorch-grad-cam is not installed
-            gradcam_features = [
-                {"feature": "Suspicious login form structure", "gradcam_activation": 0.95},
-                {"feature": "Spoofed brand logo", "gradcam_activation": 0.89}
-            ]
+            gradcam_features = []
             
         return gradcam_features
 

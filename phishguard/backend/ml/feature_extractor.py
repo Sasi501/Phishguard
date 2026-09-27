@@ -1,7 +1,26 @@
 """
 PhishGuard — URL Feature Extractor
-Extracts 14 structural features from a URL for ML-based phishing detection.
+Extracts structural features from a URL for ML-based phishing detection.
 All features are computed from the URL string alone (no network calls).
+
+FEATURE SCHEMA (authoritative)
+------------------------------
+``MODEL_FEATURE_NAMES`` is the single source of truth for every consumer that
+feeds the trained CatBoost model (``ml/models/catboost_model.cbm``):
+
+  * backend inference            (ml/ml_service.py)
+  * ONNX export + metadata       (ml/export_onnx.py)
+  * browser feature extractor    (extension/src/feature_extractor.js)
+  * extension model metadata     (extension/model/model_meta.json)
+
+Its value is derived from, and continuously verified against, the trained
+model's own ``feature_names_``; ``ml.ml_service`` and ``ml.export_onnx`` both
+call :func:`validate_model_schema` and fail loudly on any drift.
+
+``UNMODELED_FEATURE_NAMES`` are extra URL-analysis signals that the trained
+model does **not** consume.  They are never part of the model input, are never
+exported to ONNX, and must never be presented as evidence for the CatBoost
+prediction.  They remain available for URL analysis only.
 """
 
 import math
@@ -24,7 +43,12 @@ IP_PATTERN = re.compile(
     r"^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$"
 )
 
-FEATURE_NAMES = [
+# ── Authoritative model feature schema ───────────────────────────────────────
+# Exactly the features consumed by the trained CatBoost model
+# (ml/models/catboost_model.cbm), in the model's training order.
+# Never reorder, insert into, or remove from this list without retraining the
+# model — validate_model_schema() will refuse to run on a mismatch.
+MODEL_FEATURE_NAMES = [
     "url_length",
     "hostname_length",
     "path_length",
@@ -39,14 +63,62 @@ FEATURE_NAMES = [
     "entropy",
     "suspicious_keywords",
     "uses_https",
-
-    # New features for v2 URL feature engine
-    "num_subdomains",          # count of subdomain labels (e.g., a.b.c -> 3)
-    "has_unicode",            # hostname contains non-ascii chars (potential IDN/homograph)
-    "is_punycode",            # any label starts with xn--
-    "confusable_chars",       # count of known confusable unicode lookalikes in hostname
-    "mixed_script_changes",   # number of script block changes across hostname
 ]
+
+# ── Analysis-only features (NOT model inputs) ────────────────────────────────
+# Computed for URL analysis / reporting. The trained model never sees them,
+# they are not exported to ONNX, they are not sent to the browser as model
+# input, and XAI must never claim they affected the CatBoost prediction.
+UNMODELED_FEATURE_NAMES = [
+    "num_subdomains",          # count of subdomain labels (e.g., a.b.c -> 3)
+    "has_unicode",             # hostname contains non-ascii chars (potential IDN/homograph)
+    "is_punycode",             # any label starts with xn--
+    "confusable_chars",        # count of known confusable unicode lookalikes in hostname
+    "mixed_script_changes",    # number of script block changes across hostname
+]
+
+# Every feature this module can compute (model inputs + analysis-only).
+FEATURE_NAMES = MODEL_FEATURE_NAMES + UNMODELED_FEATURE_NAMES
+
+
+class FeatureSchemaError(RuntimeError):
+    """Raised when a model's feature schema differs from MODEL_FEATURE_NAMES."""
+
+
+def validate_model_schema(model_feature_names) -> list:
+    """
+    Validate a model's declared feature schema against MODEL_FEATURE_NAMES.
+
+    Returns the schema as a list of strings on success. Raises
+    FeatureSchemaError with a precise message on any difference, so a schema
+    drift can never be silently ignored by inference or export.
+    """
+    actual = [str(name) for name in (model_feature_names or [])]
+
+    if not actual:
+        raise FeatureSchemaError(
+            "Model does not declare any feature names; the feature schema "
+            "cannot be verified."
+        )
+
+    expected = list(MODEL_FEATURE_NAMES)
+
+    if len(actual) != len(expected):
+        raise FeatureSchemaError(
+            f"Feature count mismatch: model expects {len(actual)} features "
+            f"but MODEL_FEATURE_NAMES declares {len(expected)}. "
+            f"model={actual} declared={expected}"
+        )
+
+    for index, (got, want) in enumerate(zip(actual, expected)):
+        if got != want:
+            raise FeatureSchemaError(
+                f"Feature order/name mismatch at index {index}: model uses "
+                f"{got!r} but MODEL_FEATURE_NAMES declares {want!r}."
+            )
+
+    return actual
+
 
 
 def _shannon_entropy(text: str) -> float:
@@ -65,9 +137,12 @@ def _shannon_entropy(text: str) -> float:
 
 def extract_features(url: str) -> dict:
     """
-    Extract 14 structural features from a URL.
+    Extract all known structural features from a URL.
 
-    Returns a dict with feature names as keys and numeric values.
+    Returns a dict keyed by every name in FEATURE_NAMES: the model inputs
+    (MODEL_FEATURE_NAMES) plus the analysis-only features
+    (UNMODELED_FEATURE_NAMES). Only MODEL_FEATURE_NAMES entries may be fed to
+    the trained model.
     Designed to be extremely fast (~0.1ms per URL).
     """
     url = url.strip()
@@ -216,10 +291,17 @@ def extract_features(url: str) -> dict:
     }
 
 
-def extract_features_list(url: str) -> list:
-    """Return features as an ordered list (for model input)."""
+def extract_features_list(url: str, feature_names=None) -> list:
+    """
+    Return model-input features as an ordered list (for model input).
+
+    Defaults to MODEL_FEATURE_NAMES, i.e. exactly the trained model's schema,
+    in the model's order. Pass an explicit schema only when mirroring a
+    model that has already been validated against MODEL_FEATURE_NAMES.
+    """
+    names = list(MODEL_FEATURE_NAMES if feature_names is None else feature_names)
     feats = extract_features(url)
-    return [feats[name] for name in FEATURE_NAMES]
+    return [feats[name] for name in names]
 
 
 # Quick self-test

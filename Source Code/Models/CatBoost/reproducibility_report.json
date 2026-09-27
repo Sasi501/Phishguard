@@ -1,0 +1,6 @@
+{
+  "reproducible": true,
+  "max_pred_difference": 0.0,
+  "max_importance_difference": 0.0,
+  "random_seed": 1337
+}

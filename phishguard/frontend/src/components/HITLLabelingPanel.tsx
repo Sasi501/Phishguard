@@ -21,7 +21,7 @@ interface EvidenceSnapshot {
   source?: string;
   original_url?: string;
   final_url?: string;
-  ensemble_score?: number;
+  ensemble_score?: number | null;
   ensemble_risk_level?: string;
   engine_signals?: NonNullable<AnalyzeResponse['xai']>['engine_signals'];
   xai?: AnalyzeResponse['xai'];
@@ -29,6 +29,11 @@ interface EvidenceSnapshot {
   threat_intelligence?: unknown;
   redirect_analysis?: AnalyzeResponse['redirect_analysis'];
 }
+
+type CaseEvidence = Omit<AnalyzeResponse, 'ensemble_risk_level' | 'ensemble_score_percent'> & {
+  ensemble_risk_level?: string;
+  ensemble_score_percent?: number | null;
+};
 
 interface AuditLog {
   id?: number;
@@ -45,11 +50,12 @@ export default function HITLLabelingPanel() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [adminKey, setAdminKey] = useState<string>('');
   const [manualUrl, setManualUrl] = useState<string>('');
-  const [manualLabel, setManualLabel] = useState<string>('phishing');
+  const [manualLabel, setManualLabel] = useState<string>('');
   const [status, setStatus] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
-  const [caseEvidence, setCaseEvidence] = useState<AnalyzeResponse | null>(null);
+  const [caseEvidence, setCaseEvidence] = useState<CaseEvidence | null>(null);
+  const [caseScore, setCaseScore] = useState<number | null>(null);
   const [caseLoading, setCaseLoading] = useState<boolean>(false);
   const [caseError, setCaseError] = useState<string | null>(null);
   const [analystComment, setAnalystComment] = useState<string>('');
@@ -62,6 +68,7 @@ export default function HITLLabelingPanel() {
       setIsAuthorized(false);
       setSelectedUrl(null);
       setCaseEvidence(null);
+      setCaseScore(null);
       setCaseError(null);
       return;
     }
@@ -80,8 +87,11 @@ export default function HITLLabelingPanel() {
         setIsAuthorized(false);
         setSelectedUrl(null);
         setCaseEvidence(null);
+        setCaseScore(null);
         setCaseError(null);
-        setStatus('Unauthorized or invalid Admin Key.');
+        setStatus(pendingRes.status === 403 || auditRes.status === 403
+          ? 'Access denied. Check the Admin Access Key.'
+          : 'Unable to retrieve HITL reviews. Please try again.');
         return;
       }
 
@@ -92,12 +102,13 @@ export default function HITLLabelingPanel() {
       setAuditLogs(auditData.reverse()); // Show newest first
       setIsAuthorized(true);
       setStatus(null);
-    } catch (e) {
+    } catch {
       setPendingList([]);
       setAuditLogs([]);
       setIsAuthorized(false);
       setSelectedUrl(null);
       setCaseEvidence(null);
+      setCaseScore(null);
       setCaseError(null);
       setStatus('Failed to query HITL endpoints.');
     }
@@ -109,19 +120,25 @@ export default function HITLLabelingPanel() {
     setCaseLoading(true);
     setCaseError(null);
     setCaseEvidence(null);
+    setCaseScore(null);
     setEvidenceSource(null);
 
     if (item.evidence_snapshot) {
       const snapshot = item.evidence_snapshot;
       setCaseEvidence({
-        ensemble_risk_level: (snapshot.ensemble_risk_level || 'unavailable') as AnalyzeResponse['ensemble_risk_level'],
-        ensemble_score_percent: snapshot.ensemble_score ?? 0,
+        ensemble_risk_level: snapshot.ensemble_risk_level,
+        ensemble_score_percent: typeof snapshot.ensemble_score === 'number' && Number.isFinite(snapshot.ensemble_score)
+          ? snapshot.ensemble_score
+          : undefined,
         xai_summary: snapshot.xai?.summary || '',
         xai: snapshot.xai,
         individual_scores_percent: {},
         reasons: [],
         redirect_analysis: snapshot.redirect_analysis,
       });
+      setCaseScore(typeof snapshot.ensemble_score === 'number' && Number.isFinite(snapshot.ensemble_score)
+        ? snapshot.ensemble_score
+        : null);
       setEvidenceSource('snapshot');
       setCaseLoading(false);
       return;
@@ -144,8 +161,11 @@ export default function HITLLabelingPanel() {
 
       const data: AnalyzeResponse = await response.json();
       setCaseEvidence(data);
+      setCaseScore(typeof data.ensemble_score_percent === 'number' && Number.isFinite(data.ensemble_score_percent)
+        ? data.ensemble_score_percent
+        : null);
       setEvidenceSource('live');
-    } catch (e) {
+    } catch {
       setCaseError('Unable to load current AI scan evidence for this URL.');
     } finally {
       setCaseLoading(false);
@@ -179,7 +199,7 @@ export default function HITLLabelingPanel() {
       }
       setStatus('Case moved to under review.');
       fetchReviews();
-    } catch (e) {
+    } catch {
       setStatus('Network error claiming case.');
     }
   };
@@ -208,20 +228,20 @@ export default function HITLLabelingPanel() {
       setStatus(`Successfully resolved URL as ${finalLabel}.`);
       setAnalystComment('');
       fetchReviews(); // Refresh lists
-    } catch (e) {
+    } catch {
       setStatus('Network error resolving URL.');
     }
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualUrl) return;
+    if (!manualUrl.trim() || !manualLabel) return;
     setStatus('Submitting URL to review queue...');
     try {
       let evidenceSnapshot: EvidenceSnapshot | null = null;
       try {
         const scanForm = new FormData();
-        scanForm.append('url', manualUrl);
+        scanForm.append('url', manualUrl.trim());
         const scanResponse = await fetch('/api/analyze-ensemble/', {
           method: 'POST',
           body: scanForm,
@@ -245,7 +265,7 @@ export default function HITLLabelingPanel() {
         // Submission remains available when optional evidence capture fails.
       }
       const form = new FormData();
-      form.append('url', manualUrl);
+      form.append('url', manualUrl.trim());
       form.append('user_label', manualLabel);
       if (evidenceSnapshot) {
         form.append('evidence_snapshot', JSON.stringify(evidenceSnapshot));
@@ -267,7 +287,7 @@ export default function HITLLabelingPanel() {
       if (isAuthorized) {
         fetchReviews(); // Refresh if authorized
       }
-    } catch (e) {
+    } catch {
       setStatus('Network error submitting URL.');
     }
   };
@@ -277,10 +297,15 @@ export default function HITLLabelingPanel() {
   };
 
   const xai = caseEvidence?.xai ?? null;
+  const caseRiskLevel = caseEvidence?.ensemble_risk_level || 'Unavailable';
   const selectedCase = pendingList.find(item => item.url === selectedUrl) ?? null;
-  const threatAndDomainSignals = xai?.engine_signals?.filter(signal =>
+  const xaiRiskFactors = Array.isArray(xai?.risk_factors) ? xai.risk_factors : [];
+  const xaiSafetyFactors = Array.isArray(xai?.safety_factors) ? xai.safety_factors : [];
+  const xaiEngineSignals = Array.isArray(xai?.engine_signals) ? xai.engine_signals : [];
+  const xaiFeatureImportance = Array.isArray(xai?.feature_importance) ? xai.feature_importance : [];
+  const threatAndDomainSignals = xaiEngineSignals.filter(signal =>
     /threat|domain/i.test(signal.engine || '')
-  ) ?? [];
+  );
 
   return (
     <section className="hitl-panel glass-card">
@@ -289,14 +314,18 @@ export default function HITLLabelingPanel() {
       <div className="hitl-panel__form-section">
         <h3>Report Suspicious URL</h3>
         <form onSubmit={handleManualSubmit} className="hitl-panel__submit-form">
+          <label htmlFor="hitl-report-url">URL</label>
           <input
-            type="text"
-            placeholder="https://example-phish.com/login"
+            id="hitl-report-url"
+            type="url"
+            placeholder="Enter suspicious URL…"
             value={manualUrl}
             onChange={e => setManualUrl(e.target.value)}
             required
           />
-          <select value={manualLabel} onChange={e => setManualLabel(e.target.value)}>
+          <label htmlFor="hitl-report-verdict">Your report</label>
+          <select id="hitl-report-verdict" value={manualLabel} onChange={e => setManualLabel(e.target.value)} required>
+            <option value="" disabled>Select verdict</option>
             <option value="phishing">Phishing</option>
             <option value="suspicious">Suspicious</option>
             <option value="safe">Safe</option>
@@ -317,14 +346,14 @@ export default function HITLLabelingPanel() {
         />
       </div>
 
-      {status && <div className="hitl-panel__status-banner">{status}</div>}
+      {status && <div className="hitl-panel__status-banner" role="status">{status}</div>}
 
       {isAuthorized && (
         <div className="hitl-panel__dashboard">
           <div className="hitl-panel__pending-section">
             <h3>Pending Submissions ({pendingList.length})</h3>
             {pendingList.length === 0 ? (
-              <div className="muted">No pending URLs to review. Excellent work!</div>
+              <div className="muted">No pending cases.</div>
             ) : (
               <div className="hitl-table-wrapper">
                 <table className="hitl-table">
@@ -410,9 +439,12 @@ export default function HITLLabelingPanel() {
                       <strong className="hitl-evidence__value hitl-evidence__value--mono">{selectedUrl ?? 'Unavailable'}</strong>
                     </div>
                     <div className="hitl-evidence__info-card">
-                      <span className="hitl-evidence__label">Current AI Assessment</span>
+                      <span className="hitl-evidence__label">
+                        {evidenceSource === 'snapshot' ? 'Historical Ensemble Assessment' : 'Current Live Analysis'}
+                      </span>
                       <strong className="hitl-evidence__value">
-                        {caseEvidence.ensemble_risk_level} · {Math.round(caseEvidence.ensemble_score_percent)}%
+                        {caseRiskLevel.toLowerCase() === 'unavailable' ? 'Assessment unavailable' : caseRiskLevel}
+                        {caseScore !== null ? ` · ${Math.round(caseScore)}%` : ' · Score unavailable'}
                       </strong>
                     </div>
                     <div className="hitl-evidence__info-card">
@@ -444,8 +476,13 @@ export default function HITLLabelingPanel() {
                       <h4>Redirect Evidence (Supporting Only)</h4>
                       <p className="hitl-evidence__summary">
                         {caseEvidence.redirect_analysis.num_redirects} redirect(s), state:{' '}
-                        {caseEvidence.redirect_analysis.resolution_state}
+                        {caseEvidence.redirect_analysis.resolution_state === 'blocked'
+                          ? 'Redirect resolution restricted'
+                          : caseEvidence.redirect_analysis.resolution_state}
                       </p>
+                      {caseEvidence.redirect_analysis.resolution_state === 'blocked' && (
+                        <p className="hitl-evidence__summary">The restricted network check is not the final phishing verdict.</p>
+                      )}
                       <div className="hitl-evidence__meta">
                         Final destination: {caseEvidence.redirect_analysis.final_url || 'Unavailable'}
                         {caseEvidence.redirect_analysis.suspicious_redirects
@@ -472,11 +509,11 @@ export default function HITLLabelingPanel() {
                       </div>
                     )}
 
-                    {xai && xai.risk_factors && xai.risk_factors.length > 0 && (
+                    {xaiRiskFactors.length > 0 && (
                       <div className="hitl-evidence__block">
                         <h4>Risk Factors</h4>
                         <ul className="hitl-evidence__list">
-                          {xai.risk_factors.map((factor, index) => (
+                          {xaiRiskFactors.map((factor, index) => (
                             <li key={`${factor.title}-${index}`}>
                               <strong>{factor.title}</strong>: {factor.description}
                             </li>
@@ -485,11 +522,11 @@ export default function HITLLabelingPanel() {
                       </div>
                     )}
 
-                    {xai && xai.safety_factors && xai.safety_factors.length > 0 && (
+                    {xaiSafetyFactors.length > 0 && (
                       <div className="hitl-evidence__block">
                         <h4>Safety Factors</h4>
                         <ul className="hitl-evidence__list">
-                          {xai.safety_factors.map((factor, index) => (
+                          {xaiSafetyFactors.map((factor, index) => (
                             <li key={`${factor.title}-${index}`}>
                               <strong>{factor.title}</strong>: {factor.description}
                             </li>
@@ -498,31 +535,42 @@ export default function HITLLabelingPanel() {
                       </div>
                     )}
 
-                    {xai && xai.engine_signals && xai.engine_signals.length > 0 && (
+                    {xaiEngineSignals.length > 0 && (
                       <div className="hitl-evidence__block">
                         <h4>Engine Signals</h4>
                         <div className="hitl-evidence__signal-list">
-                          {xai.engine_signals.map((signal, index) => (
-                            <div key={`${signal.engine}-${index}`} className="hitl-evidence__signal">
-                              <div className="hitl-evidence__signal-head">
-                                <span>{signal.engine}</span>
-                                <strong>{signal.risk_level}</strong>
+                          {xaiEngineSignals.map((signal, index) => {
+                            const score = typeof signal.score === 'number' && Number.isFinite(signal.score)
+                              ? Math.max(0, Math.min(100, signal.score))
+                              : null;
+                            return (
+                              <div key={`${signal.engine}-${index}`} className="hitl-evidence__signal">
+                                <div className="hitl-evidence__signal-head">
+                                  <span>{signal.engine}</span>
+                                  <strong>{signal.status === 'restricted' ? 'restricted' : signal.risk_level}</strong>
+                                </div>
+                                {score !== null ? (
+                                  <div className="hitl-evidence__meter">
+                                    <span style={{ width: `${score}%` }} />
+                                  </div>
+                                ) : (
+                                  <div className="hitl-evidence__meta">
+                                    {signal.reason || signal.status || 'No score reported'}
+                                  </div>
+                                )}
+                                {signal.match_status && <div className="hitl-evidence__meta">{signal.match_status}</div>}
                               </div>
-                              <div className="hitl-evidence__meter">
-                                <span style={{ width: `${Math.min(100, Math.max(0, signal.score))}%` }} />
-                              </div>
-                              {signal.match_status && <div className="hitl-evidence__meta">{signal.match_status}</div>}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
-                    {xai && xai.feature_importance && xai.feature_importance.length > 0 && (
+                    {xaiFeatureImportance.length > 0 && (
                       <div className="hitl-evidence__block">
                         <h4>Feature Importance</h4>
                         <ul className="hitl-evidence__list">
-                          {xai.feature_importance.map((feature, index) => (
+                          {xaiFeatureImportance.map((feature, index) => (
                             <li key={`${feature.feature}-${index}`}>
                               <strong>{feature.feature}</strong>: impact {feature.impact}
                             </li>
@@ -535,20 +583,31 @@ export default function HITLLabelingPanel() {
                       <div className="hitl-evidence__block">
                         <h4>Threat / Domain Evidence</h4>
                         <div className="hitl-evidence__signal-list">
-                          {threatAndDomainSignals.map((signal, index) => (
-                            <div key={`${signal.engine}-${index}`} className="hitl-evidence__signal">
-                              <div className="hitl-evidence__signal-head">
-                                <span>{signal.engine}</span>
-                                <strong>{signal.risk_level}</strong>
+                          {threatAndDomainSignals.map((signal, index) => {
+                            const score = typeof signal.score === 'number' && Number.isFinite(signal.score)
+                              ? Math.max(0, Math.min(100, signal.score))
+                              : null;
+                            return (
+                              <div key={`${signal.engine}-${index}`} className="hitl-evidence__signal">
+                                <div className="hitl-evidence__signal-head">
+                                  <span>{signal.engine}</span>
+                                  <strong>{signal.status === 'restricted' ? 'restricted' : signal.risk_level}</strong>
+                                </div>
+                                {score !== null ? (
+                                  <div className="hitl-evidence__meter">
+                                    <span style={{ width: `${score}%` }} />
+                                  </div>
+                                ) : (
+                                  <div className="hitl-evidence__meta">
+                                    {signal.reason || signal.status || 'No score reported'}
+                                  </div>
+                                )}
+                                {signal.sources && signal.sources.length > 0 && (
+                                  <div className="hitl-evidence__meta">Sources: {signal.sources.join(', ')}</div>
+                                )}
                               </div>
-                              <div className="hitl-evidence__meter">
-                                <span style={{ width: `${Math.min(100, Math.max(0, signal.score))}%` }} />
-                              </div>
-                              {signal.sources && signal.sources.length > 0 && (
-                                <div className="hitl-evidence__meta">Sources: {signal.sources.join(', ')}</div>
-                              )}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -565,7 +624,7 @@ export default function HITLLabelingPanel() {
                   </div>
                 </>
               ) : (
-                <div className="muted">No live scan evidence is available for the selected URL.</div>
+                <div className="muted">Evidence not available for the selected URL.</div>
               )}
             </div>
           )}

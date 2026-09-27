@@ -6,10 +6,6 @@ import time
 from urllib.parse import urljoin, urlparse
 
 import requests
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 
 _BLOCKED_IPV4_NETWORKS = (
@@ -125,6 +121,7 @@ def unwrap_url(
 
     path = []
     errors = []
+    blocked_reason = None
     loop_detected = False
     resolution_state = "failed"
     session = requests.Session()
@@ -152,7 +149,8 @@ def unwrap_url(
             try:
                 validate_url_for_fetch(current)
             except ValueError as exc:
-                errors.append(f"unsafe_url:{exc}")
+                blocked_reason = str(exc)
+                errors.append(f"unsafe_url:{blocked_reason}")
                 path.append({"url": current, "status_code": None, "note": "unsafe_url"})
                 resolution_state = "blocked"
                 break
@@ -197,7 +195,8 @@ def unwrap_url(
                     try:
                         validate_url_for_fetch(next_url)
                     except ValueError as exc:
-                        errors.append(f"unsafe_redirect:{exc}")
+                        blocked_reason = str(exc)
+                        errors.append(f"unsafe_redirect:{blocked_reason}")
                         path.append({"url": next_url, "status_code": None, "note": "unsafe_redirect"})
                         resolution_state = "blocked"
                         break
@@ -219,7 +218,8 @@ def unwrap_url(
                     try:
                         validate_url_for_fetch(next_url)
                     except ValueError as exc:
-                        errors.append(f"unsafe_meta_refresh:{exc}")
+                        blocked_reason = str(exc)
+                        errors.append(f"unsafe_meta_refresh:{blocked_reason}")
                         path[-1]["note"] = "unsafe_meta_refresh"
                         resolution_state = "blocked"
                         break
@@ -260,6 +260,12 @@ def unwrap_url(
     if use_browser and resolution_state == "completed":
         try:
             validate_url_for_fetch(final_url)
+            # Lazy-import Selenium — only required when browser mode is enabled.
+            from selenium import webdriver
+            from selenium.webdriver.chrome.options import Options
+            from selenium.webdriver.chrome.service import Service
+            from webdriver_manager.chrome import ChromeDriverManager
+
             chrome_options = Options()
             chrome_options.add_argument("--headless=new" if hasattr(Options(), "add_argument") else "--headless")
             chrome_options.add_argument("--no-sandbox")
@@ -278,8 +284,12 @@ def unwrap_url(
                     final_url = current_browser_url
             finally:
                 driver.quit()
+        except ImportError as exc:
+            errors.append(f"browser_error:Selenium not installed: {exc}")
+            resolution_state = "unavailable"
         except ValueError as exc:
-            errors.append(f"unsafe_browser_url:{exc}")
+            blocked_reason = str(exc)
+            errors.append(f"unsafe_browser_url:{blocked_reason}")
             resolution_state = "blocked"
         except Exception as exc:
             errors.append(f"browser_error:{exc}")
@@ -295,4 +305,5 @@ def unwrap_url(
         "suspicious_redirects": suspicious,
         "errors": errors,
         "resolution_state": resolution_state,
+        "blocked_reason": blocked_reason,
     }

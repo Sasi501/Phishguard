@@ -1,0 +1,25 @@
+{
+  "source_version": "v2",
+  "model_type": "RandomForestClassifier",
+  "n_estimators": 100,
+  "random_state": 42,
+  "n_features": 4,
+  "feature_order": [
+    "ml",
+    "nlp",
+    "vision",
+    "domain"
+  ],
+  "classes": [
+    "safe",
+    "phishing"
+  ],
+  "registered_from": "registry/models/meta_learner/v2/meta_learner.pkl",
+  "source_sha256": "da439ea0c003e1b479697903ceeec2cd2deef043edf70f219a2208048185608e",
+  "note": "Re-registration of the only loadable meta-learner artifact in this repository. Versions v1 and v3-v10 hold 5-byte placeholder files (b'hello') written by the registry self-test, not models.",
+  "training_data_note": "No labeled meta-learner CSV exists in the repository; the artifact matches ensemble_module/train_meta.py synth_dataset labelling rule at 99.2% agreement on 20k random samples.",
+  "name": "meta_learner",
+  "version": "v11",
+  "artifact": "meta_learner.pkl",
+  "storage_uri": "mock://models/meta_learner/v11/meta_learner.pkl"
+}

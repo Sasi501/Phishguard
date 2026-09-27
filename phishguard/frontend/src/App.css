@@ -11,6 +11,11 @@
   min-height: 100vh;
   width: 100%;
   box-sizing: border-box;
+  transition: padding-top 0.25s ease;
+}
+
+.app-main--advanced {
+  padding-top: calc(var(--nav-height) + 4.5rem);
 }
 
 /* ---------------------------------------------------------------------------

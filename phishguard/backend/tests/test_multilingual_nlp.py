@@ -6,6 +6,7 @@ Uses keyword-fallback mode so tests pass without downloading large models.
 import unittest
 import os
 import sys
+from unittest.mock import patch
 
 # Ensure backend root is on the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -107,6 +108,27 @@ class TestMultilingualNLPService(unittest.TestCase):
         from nlp.nlp_service import is_nlp_available
         # Should always return True since multilingual fallback is always available
         self.assertIsInstance(is_nlp_available(), bool)
+
+    def test_distilbert_does_not_emit_synthetic_shap_values(self):
+        import builtins
+        import torch
+        from types import SimpleNamespace
+        from nlp.nlp_service import NLPService
+
+        service = NLPService()
+        service._tokenizer = lambda *args, **kwargs: {}
+        service._model = lambda **kwargs: SimpleNamespace(logits=torch.tensor([[0.0, 2.0]]))
+        original_import = builtins.__import__
+
+        def import_without_shap(name, *args, **kwargs):
+            if name == "shap":
+                raise ImportError("SHAP intentionally unavailable in this test")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(service, "_load_model"), patch("builtins.__import__", side_effect=import_without_shap):
+            result = service.analyze_text("urgent account verification")
+
+        self.assertEqual(result["shap_features"], [])
 
 
 if __name__ == "__main__":

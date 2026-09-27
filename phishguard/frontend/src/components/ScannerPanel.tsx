@@ -1,20 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AnalyzeRequest } from '../types/api'
-import { SIZES, DURATIONS } from '../theme'
+import { SIZES } from '../theme'
 import './ScannerPanel.css'
 
 interface ScannerPanelProps {
   loading: boolean
   onSubmit: (req: AnalyzeRequest) => void
 }
-
-const LOADING_MESSAGES = [
-  'Resolving domain…',
-  'Running ML classifier…',
-  'Analyzing NLP signals…',
-  'Fusing ensemble scores…',
-] as const
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp']
 
@@ -26,20 +19,6 @@ export default function ScannerPanel({ loading, onSubmit }: ScannerPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [urlError, setUrlError] = useState('')
   const [imageError, setImageError] = useState('')
-  const [statusIndex, setStatusIndex] = useState(0)
-
-  // Cycle through loading messages
-  useEffect(() => {
-    if (!loading) {
-      setStatusIndex(0)
-      return
-    }
-    const interval = setInterval(() => {
-      setStatusIndex(prev => (prev + 1) % LOADING_MESSAGES.length)
-    }, DURATIONS.statusCycle)
-    return () => clearInterval(interval)
-  }, [loading])
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null
     if (!file) {
@@ -84,7 +63,7 @@ export default function ScannerPanel({ loading, onSubmit }: ScannerPanelProps) {
           <div className="scanner-panel__scan-line" aria-hidden="true" />
           <div className="scanner-panel__loading-status" aria-live="polite" aria-atomic="true">
             <div className="scanner-panel__spinner" aria-hidden="true" />
-            <span>{LOADING_MESSAGES[statusIndex]}</span>
+            <span>Analyzing multi-modal signals...</span>
           </div>
         </>
       )}

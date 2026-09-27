@@ -25,7 +25,7 @@ export const DURATIONS = {
   particleMin:    0.2,    // px/frame — slowest particle drift
   particleMax:    1.0,    // px/frame — fastest particle drift
   badgePulse:     1500,   // ms — phishing ThreatBadge glow pulse
-  systemPulse:    2000,   // ms — "SYSTEM ONLINE" nav pulse
+  systemPulse:    2000,   // ms — core system status nav pulse
   xaiStagger:     80,     // ms — XAI list item fade-in delay
   xaiFade:        300,    // ms — each XAI item fade duration
   statusCycle:    1000,   // ms — loading status message rotation
@@ -47,4 +47,5 @@ export const RISK_COLORS: Record<string, string> = {
   high:       COLORS.neonCrimson,
   suspicious: COLORS.neonAmber,
   phishing:   COLORS.neonCrimson,
+  unavailable: COLORS.textMuted,
 }

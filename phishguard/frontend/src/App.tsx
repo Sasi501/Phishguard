@@ -7,14 +7,14 @@ import NavigationBar from './components/NavigationBar'
 import ScannerPanel from './components/ScannerPanel'
 import ThreatMeter from './components/ThreatMeter'
 import RiskAssessmentCard from './components/RiskAssessmentCard'
-import EnginePanel from './components/EnginePanel'
-import EngineSignalCard from './components/EngineSignalCard'
+import BasicDetectionSummary from './components/BasicDetectionSummary'
 import URLAnatomy from './components/URLAnatomy'
-import DomainIntelligence from './components/DomainIntelligence'
-import ThreatIntelligence from './components/ThreatIntelligence'
-import RedirectAnalysis from './components/RedirectAnalysis'
 import XAIPanel from './components/XAIPanel'
+import EngineSignalCard from './components/EngineSignalCard'
 import ModelRegistryPanel from './components/ModelRegistryPanel'
+import ModelEvaluationCenter from './components/ModelEvaluationCenter'
+import EvidenceMatrix from './components/EvidenceMatrix'
+import ScanAnalytics from './components/ScanAnalytics'
 import ScanHistory from './components/ScanHistory'
 import ErrorBanner from './components/ErrorBanner'
 import HITLLabelingPanel from './components/HITLLabelingPanel'
@@ -29,22 +29,29 @@ function App() {
   const [history, setHistory] = useState<ScanEntry[]>([])
   const [activeEntry, setActiveEntry] = useState<ScanEntry | null>(null)
   const lastUrlRef = useRef<string>('')
+  const lastInputRef = useRef({ hasText: false, hasImage: false })
+  const [latestResultAt, setLatestResultAt] = useState<Date | null>(null)
+  const [viewMode, setViewMode] = useState<'basic' | 'advanced'>('basic')
 
   // When a new result arrives, prepend to history
   useEffect(() => {
     if (!analysis.result) return
+    const timestamp = new Date()
     const entry: ScanEntry = {
       id: crypto.randomUUID(),
-      timestamp: new Date(),
+      timestamp,
       url: lastUrlRef.current,
       result: analysis.result,
+      ...lastInputRef.current,
     }
+    setLatestResultAt(timestamp)
     setHistory(prev => [entry, ...prev].slice(0, SIZES.historyMax))
   }, [analysis.result])
 
   const handleSubmit = (req: AnalyzeRequest) => {
     setActiveEntry(null)
     lastUrlRef.current = req.url
+    lastInputRef.current = { hasText: Boolean(req.text?.trim()), hasImage: Boolean(req.image) }
     analysis.analyze(req)
   }
 
@@ -57,6 +64,8 @@ function App() {
   const [showRegistry, setShowRegistry] = useState(false)
   const [showHITL, setShowHITL] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showEvaluation, setShowEvaluation] = useState(false)
+  const [showAnalytics, setShowAnalytics] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
 
   // Back to dashboard handler
@@ -70,13 +79,20 @@ function App() {
     <>
       <ParticleBackground />
       <NavigationBar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onHomeClick={handleBackToDashboard}
         onToggleRegistry={() => setShowRegistry(s => !s)}
         onToggleHITL={() => setShowHITL(s => !s)}
         onToggleSettings={() => setShowSettings(s => !s)}
+        onToggleEvaluation={() => setShowEvaluation(s => !s)}
+        onToggleAnalytics={() => setShowAnalytics(s => !s)}
         isRegistryOpen={showRegistry}
         isHITLOpen={showHITL}
+        isEvaluationOpen={showEvaluation}
+        isAnalyticsOpen={showAnalytics}
       />
-      <main className="app-main">
+      <main className={`app-main ${viewMode === 'advanced' ? 'app-main--advanced' : ''}`}>
         {analysis.error && !activeEntry && (
           <ErrorBanner message={analysis.error} onDismiss={analysis.reset} />
         )}
@@ -100,7 +116,6 @@ function App() {
               <RiskAssessmentCard
                 score={displayResult.ensemble_score_percent}
                 riskLevel={displayResult.ensemble_risk_level}
-                confidence={displayResult.xai ? 100 : undefined}
                 url={resultUrl}
               />
               <ThreatMeter
@@ -109,53 +124,61 @@ function App() {
               />
             </div>
 
-            {displayResult.individual_scores_percent &&
-              Object.keys(displayResult.individual_scores_percent).length > 0 && (
-                <EnginePanel scores={displayResult.individual_scores_percent} />
-              )}
-
-            {displayResult.xai && displayResult.xai.engine_signals && displayResult.xai.engine_signals.length > 0 && (
-              <section className="engine-signals-section glass-card" aria-labelledby="multimodal-heading">
-                <div className="engine-signals-section__header">
-                  <h2 id="multimodal-heading" className="engine-signals-section__title">MULTI-MODAL ENGINE SIGNALS</h2>
-                  <p>Individual engine evidence; not the final ensemble assessment.</p>
-                </div>
-                <div className="engine-signals-section__grid">
-                  {displayResult.xai.engine_signals.map((signal, index) => (
-                    <EngineSignalCard key={`${signal.engine}-${index}`} signal={signal} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            <URLAnatomy url={resultUrl} />
-            <DomainIntelligence
-              url={displayResult.redirect_analysis?.final_url || resultUrl}
-              xai={displayResult.xai ?? null}
-            />
-            <ThreatIntelligence xai={displayResult.xai ?? null} />
-            <RedirectAnalysis analysis={displayResult.redirect_analysis} />
-
-            {(displayResult.xai_summary || displayResult.xai || (displayResult.reasons && displayResult.reasons.length > 0)) && (
-              <XAIPanel
-                summary={displayResult.xai_summary}
-                reasons={displayResult.reasons ?? []}
-                xai={displayResult.xai ?? null}
+            {viewMode === 'basic' ? (
+              <BasicDetectionSummary
+                result={displayResult}
+                onViewDetails={() => setViewMode('advanced')}
               />
-            )}
+            ) : (
+              <>
+                {displayResult.xai?.engine_signals && (
+                  <section className="engine-signals-section glass-card" aria-labelledby="engine-signals-heading">
+                    <header className="engine-signals-section__header">
+                      <h2 id="engine-signals-heading" className="engine-signals-section__title">Individual Engine Signals</h2>
+                      <p>Each signal is an individual evidence input, not the final ensemble score.</p>
+                    </header>
+                    <div className="engine-signals-section__grid">
+                      {displayResult.xai.engine_signals
+                        .filter(signal => signal.score_type === 'engine_signal')
+                        .map((signal, index) => (
+                          <EngineSignalCard key={`${signal.source ?? signal.engine}-${index}`} signal={signal} />
+                        ))}
+                    </div>
+                  </section>
+                )}
 
-            {displayResult.thumbnail_base64 && (
-              <div className="app-thumbnail glass-card">
-                <h3>Page Thumbnail</h3>
-                <img src={`data:image/jpeg;base64,${displayResult.thumbnail_base64}`} alt="Page thumbnail" />
-              </div>
+                <URLAnatomy url={resultUrl} />
+                <XAIPanel
+                  summary={displayResult.xai_summary}
+                  reasons={displayResult.reasons ?? []}
+                  xai={displayResult.xai ?? null}
+                  ensembleScore={displayResult.ensemble_score_percent}
+                  ensembleRiskLevel={displayResult.ensemble_risk_level}
+                  submittedUrl={resultUrl}
+                  receivedAt={activeEntry?.timestamp ?? latestResultAt ?? undefined}
+                  submittedText={activeEntry ? activeEntry.hasText ?? false : lastInputRef.current.hasText}
+                  submittedImage={activeEntry ? activeEntry.hasImage ?? false : lastInputRef.current.hasImage}
+                  analysisStatus={displayResult.analysis_status}
+                  engineStatus={displayResult.engine_status}
+                />
+                <EvidenceMatrix result={displayResult} />
+
+                {displayResult.thumbnail_base64 && (
+                  <div className="app-thumbnail glass-card">
+                    <h3>Page Thumbnail</h3>
+                    <img src={`data:image/jpeg;base64,${displayResult.thumbnail_base64}`} alt="Page thumbnail" />
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
         {history.length > 0 && (
           <ScanHistory entries={history} onSelect={handleHistorySelect} />
         )}
-        <EngineStatus />
+        {viewMode === 'advanced' && <EngineStatus />}
+        {showAnalytics && <ScanAnalytics entries={history} />}
+        {showEvaluation && <ModelEvaluationCenter />}
         {showRegistry && <ModelRegistryPanel />}
         {showHITL && <HITLLabelingPanel />}
         {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}

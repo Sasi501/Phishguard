@@ -28,25 +28,33 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
     localStorage.setItem('reducedMotion', String(newMotion))
   }
 
-  // Effect to set initial language from local storage if available
   useEffect(() => {
     const savedLang = localStorage.getItem('language')
     if (savedLang && savedLang !== i18n.language) {
-      i18n.changeLanguage(savedLang)
+      void i18n.changeLanguage(savedLang)
     }
-  }, [i18n])
+    document.documentElement.classList.toggle('reduced-motion', reducedMotion)
+  }, [i18n, reducedMotion])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
   return (
-    <div className="settings-panel glass-card">
+    <aside className="settings-panel glass-card" aria-labelledby="settings-panel-title">
       <div className="settings-panel__header">
-        <h2>{t('settings.title')}</h2>
+        <h2 id="settings-panel-title">{t('settings.title')}</h2>
         <button className="settings-panel__close" onClick={onClose} aria-label={t('settings.close')}>✕</button>
       </div>
 
       <div className="settings-panel__content">
         <div className="settings-panel__group">
-          <label>{t('settings.language')}</label>
-          <select value={i18n.language} onChange={handleLanguageChange} className="settings-panel__select">
+          <label htmlFor="settings-language">{t('settings.language')}</label>
+          <select id="settings-language" value={i18n.language} onChange={handleLanguageChange} className="settings-panel__select">
             <option value="en">English</option>
             <option value="hi">हिंदी (Hindi)</option>
             <option value="ta">தமிழ் (Tamil)</option>
@@ -55,7 +63,7 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
         <div className="settings-panel__group">
-          <label>{t('settings.animations')}</label>
+          <span className="settings-panel__group-label">{t('settings.animations')}</span>
           <label className="settings-panel__checkbox-label">
             <input 
               type="checkbox" 
@@ -66,6 +74,6 @@ export default function SettingsPanel({ onClose }: SettingsPanelProps) {
           </label>
         </div>
       </div>
-    </div>
+    </aside>
   )
 }

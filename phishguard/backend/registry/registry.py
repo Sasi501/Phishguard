@@ -16,6 +16,32 @@ from typing import Optional, Dict, Any
 REGISTRY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 
 
+def _version_sort_key(version: str):
+    """Order version names numerically so that v2 < v10.
+
+    Plain ``sorted()`` is lexicographic, which ranks 'v10' *before* 'v9' and
+    therefore made ``get_latest_model_path()`` resolve to v9 instead of the
+    highest registered version. Non-numeric versions sort after numeric ones
+    and keep their text order.
+    """
+    core = version[1:] if version[:1].lower() == 'v' else version
+    if core.isdigit():
+        return (0, int(core), '')
+    return (1, 0, version)
+
+
+def _sorted_versions(versions) -> list:
+    return sorted(versions, key=_version_sort_key)
+
+
+def _latest_version(name: str) -> Optional[str]:
+    model_path = os.path.join(REGISTRY_DIR, name)
+    if not os.path.exists(model_path):
+        return None
+    versions = _sorted_versions(d for d in os.listdir(model_path) if os.path.isdir(os.path.join(model_path, d)))
+    return versions[-1] if versions else None
+
+
 def _model_dir(name: str, version: str) -> str:
     return os.path.join(REGISTRY_DIR, name, version)
 
@@ -29,14 +55,14 @@ def list_models(name: Optional[str] = None) -> Dict[str, Any]:
         model_path = os.path.join(REGISTRY_DIR, name)
         if not os.path.exists(model_path):
             return {}
-        versions = sorted(os.listdir(model_path))
+        versions = _sorted_versions(os.listdir(model_path))
         out[name] = versions
         return out
 
     for model_name in os.listdir(REGISTRY_DIR):
         path = os.path.join(REGISTRY_DIR, model_name)
         if os.path.isdir(path):
-            out[model_name] = sorted(os.listdir(path))
+            out[model_name] = _sorted_versions(os.listdir(path))
     return out
 
 
@@ -52,14 +78,13 @@ def _read_metadata(path: str) -> Dict[str, Any]:
 
 
 def get_latest_model_path(name: str) -> Optional[str]:
-    """Return the artifact path for the latest version of the named model, or None."""
-    model_path = os.path.join(REGISTRY_DIR, name)
-    if not os.path.exists(model_path):
+    """Return the artifact path for the latest version of the named model, or None.
+
+    "Latest" is the numerically highest registered version (v10 > v9 > v2).
+    """
+    latest = _latest_version(name)
+    if latest is None:
         return None
-    versions = sorted(os.listdir(model_path))
-    if not versions:
-        return None
-    latest = versions[-1]
     return get_artifact_path(name, latest)
 
 
@@ -87,19 +112,21 @@ def register_model(name: str, artifact_src: str, version: Optional[str] = None, 
 
     # Determine version
     if version is None:
-        # auto-increment numeric versions
-        existing = sorted([d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]) if os.path.exists(base) else []
+        # auto-increment numeric versions (ordered numerically, so v10 -> v11)
+        existing = _sorted_versions(
+            [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+        ) if os.path.exists(base) else []
         if not existing:
             version = 'v1'
         else:
             # try to parse last numeric suffix
             last = existing[-1]
-            try:
-                num = int(last.lstrip('v'))
-                version = f'v{num+1}'
-            except Exception:
-                # fallback to timestamp
-                version = f'v{len(existing)+1}'
+            core = last[1:] if last[:1].lower() == 'v' else last
+            if core.isdigit():
+                version = f'v{int(core) + 1}'
+            else:
+                # fallback to a version that cannot collide with the last one
+                version = f'v{len(existing) + 1}'
 
     dest_dir = _model_dir(name, version)
     os.makedirs(dest_dir, exist_ok=True)
@@ -136,13 +163,9 @@ def register_model(name: str, artifact_src: str, version: Optional[str] = None, 
 def get_model_metadata(name: str, version: Optional[str] = None) -> Dict[str, Any]:
     """Return metadata for a model. If version omitted, returns latest metadata."""
     if version is None:
-        model_path = os.path.join(REGISTRY_DIR, name)
-        if not os.path.exists(model_path):
+        version = _latest_version(name)
+        if version is None:
             return {}
-        versions = sorted(os.listdir(model_path))
-        if not versions:
-            return {}
-        version = versions[-1]
     path = _model_dir(name, version)
     return _read_metadata(path)
 
@@ -150,13 +173,9 @@ def get_model_metadata(name: str, version: Optional[str] = None) -> Dict[str, An
 def get_artifact_path(name: str, version: Optional[str] = None) -> Optional[str]:
     """Return the full path to the artifact file for a given model and version. If version omitted, uses latest."""
     if version is None:
-        model_path = os.path.join(REGISTRY_DIR, name)
-        if not os.path.exists(model_path):
+        version = _latest_version(name)
+        if version is None:
             return None
-        versions = sorted(os.listdir(model_path))
-        if not versions:
-            return None
-        version = versions[-1]
     
     candidate = _model_dir(name, version)
     artifact_file = None
@@ -196,7 +215,7 @@ def promote_model(name: str, version: Optional[str] = None, target_path: Optiona
     model_path = os.path.join(REGISTRY_DIR, name)
     if not os.path.exists(model_path):
         return None
-    versions = sorted(os.listdir(model_path))
+    versions = _sorted_versions(os.listdir(model_path))
     if not versions:
         return None
     if version is None:

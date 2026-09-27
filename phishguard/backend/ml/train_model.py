@@ -24,7 +24,12 @@ warnings.filterwarnings("ignore")
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ml.feature_extractor import extract_features, FEATURE_NAMES
+from ml.feature_extractor import (
+    extract_features,
+    FEATURE_NAMES,
+    MODEL_FEATURE_NAMES,
+    validate_model_schema,
+)
 
 # Paths
 ML_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,7 +64,9 @@ def extract_all_features(urls, labels=None):
     print(f"[+] Feature extraction complete in {elapsed:.1f}s ({errors} errors)")
 
     df = pd.DataFrame(features)
-    return df
+    # Train on the authoritative model schema only. The analysis-only
+    # features are extracted for reporting but are never model inputs.
+    return df[list(MODEL_FEATURE_NAMES)]
 
 
 def train_model():
@@ -94,8 +101,8 @@ def train_model():
     print(f"    Train: {len(X_train)} | Test: {len(X_test)}")
 
     # Create CatBoost pools
-    train_pool = Pool(X_train, y_train, feature_names=FEATURE_NAMES)
-    test_pool = Pool(X_test, y_test, feature_names=FEATURE_NAMES)
+    train_pool = Pool(X_train, y_train, feature_names=MODEL_FEATURE_NAMES)
+    test_pool = Pool(X_test, y_test, feature_names=MODEL_FEATURE_NAMES)
 
     # Train CatBoost
     print(f"\n[*] Training CatBoost classifier...")
@@ -149,7 +156,7 @@ def train_model():
     print(f"\n  Feature Importance (CatBoost):")
     importances = model.get_feature_importance()
     feat_imp = sorted(
-        zip(FEATURE_NAMES, importances),
+        zip(MODEL_FEATURE_NAMES, importances),
         key=lambda x: x[1],
         reverse=True,
     )
@@ -161,6 +168,13 @@ def train_model():
     os.makedirs(MODEL_DIR, exist_ok=True)
     model.save_model(MODEL_PATH)
     print(f"\n[+] Model saved to: {MODEL_PATH}")
+
+    # Guard against schema drift between training and inference.
+    validate_model_schema(model.feature_names_)
+    print(
+        f"[+] Model feature schema verified: {len(model.feature_names_)} features "
+        "== MODEL_FEATURE_NAMES."
+    )
 
     # Save metrics
     metrics = {
@@ -192,7 +206,7 @@ def train_model():
         shap_importance = {
             name: round(float(val), 4)
             for name, val in sorted(
-                zip(FEATURE_NAMES, mean_shap),
+                zip(MODEL_FEATURE_NAMES, mean_shap),
                 key=lambda x: x[1],
                 reverse=True,
             )

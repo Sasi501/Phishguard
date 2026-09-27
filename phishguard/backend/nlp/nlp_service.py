@@ -158,8 +158,6 @@ class NLPService:
         else:
             risk = "safe"
 
-        from nlp.multilingual_keywords import extract_keywords_multilingual
-        
         shap_features = []
         try:
             import shap
@@ -186,9 +184,8 @@ class NLPService:
             shap_features = sorted(token_shap_pairs, key=lambda x: x["shap_value"], reverse=True)[:3]
             
         except ImportError:
-            # Fallback to simple keyword extraction if shap is unavailable
-            keywords = extract_keywords_multilingual(text, "en") if risk != "safe" else []
-            shap_features = [{"feature": kw, "shap_value": 0.5} for kw in keywords[:3]]
+            # Keep keyword evidence separate from feature attribution.
+            shap_features = []
 
         return {
             "nlp_score": round(phishing_prob, 4),

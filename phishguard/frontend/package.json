@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test:status": "node --experimental-strip-types --test src/components/engineStatusState.test.ts src/components/evidenceProvenance.test.ts src/hooks/analysisResponse.test.ts",
     "preview": "vite preview",
     "check-bundle": "vite build && node scripts/check-bundle-size.mjs"
   },

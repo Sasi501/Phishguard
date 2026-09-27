@@ -1,45 +1,51 @@
-// PhishGuard — Popup Script
-// Reads scan result from chrome.storage.local and renders it
+// PhishGuard popup displays backend results separately from any local pre-screen.
+
+import { API_BASE_URL, BACKEND_BASE_URL } from './config.js';
 
 const STATE_CONFIG = {
   safe: {
     emoji: "✓",
     label: "SYSTEM SAFE",
-    sub: "No anomalies detected.",
+    sub: "The backend completed an analysis and returned a safe ensemble result.",
     dotClass: "safe",
   },
   suspicious: {
     emoji: "⚠",
-    label: "WARNING",
-    sub: "Anomalous signals detected.",
+    label: "REVIEW REQUIRED",
+    sub: "The backend ensemble result requires review.",
     dotClass: "suspicious",
   },
   phishing: {
     emoji: "✕",
-    label: "THREAT BLOCKED",
-    sub: "High-probability phishing vector.",
+    label: "THREAT DETECTED",
+    sub: "The backend ensemble result classified this URL as phishing.",
     dotClass: "phishing",
   },
   loading: {
     emoji: null,
     label: "ANALYZING...",
-    sub: "Extracting features & querying AI...",
+    sub: "Connecting to the PhishGuard backend...",
     dotClass: "loading",
   },
-  error: {
+  offline: {
     emoji: "?",
-    label: "SYSTEM OFFLINE",
-    sub: "Connection to core server failed.",
+    label: "SERVER OFFLINE",
+    sub: "Unable to reach the PhishGuard analysis server.",
+    dotClass: "error",
+  },
+  error: {
+    emoji: "!",
+    label: "ANALYSIS ERROR",
+    sub: "The server responded, but analysis did not complete.",
+    dotClass: "error",
+  },
+  unavailable: {
+    emoji: "?",
+    label: "ANALYSIS UNAVAILABLE",
+    sub: "No final ensemble score was returned.",
     dotClass: "error",
   },
 };
-
-function escapeHTML(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
 
 function truncate(str, n) {
   return str && str.length > n ? str.slice(0, n) + "…" : str;
@@ -97,73 +103,145 @@ function renderRedirectAnalysis(analysis) {
 
 function renderState(data) {
   const state = data?.state || "loading";
-  const config = STATE_CONFIG[state] || STATE_CONFIG.loading;
+  const config = STATE_CONFIG[state] || STATE_CONFIG.unavailable;
+  const backendStatus = data?.backend_status || "connecting";
+  const indicator = document.getElementById("backend-indicator");
+  const statusLabels = {
+    connecting: "CONNECTING TO PHISHGUARD...",
+    online: "● PHISHGUARD ONLINE",
+    offline: "● PHISHGUARD OFFLINE",
+    unknown: "● BACKEND STATUS UNKNOWN",
+  };
+  indicator.textContent = statusLabels[backendStatus] || statusLabels.unknown;
+  indicator.className = `footer-brand ${backendStatus}`;
 
-  // Status dot
   const dot = document.getElementById("status-dot");
   dot.className = `status-dot ${config.dotClass}`;
-  if (state === "loading") {
-    dot.innerHTML = `<div class="spinner"></div>`;
-  } else {
-    dot.innerHTML = `<span style="font-size:20px">${config.emoji}</span>`;
-  }
+  dot.innerHTML = state === "loading"
+    ? `<div class="spinner"></div>`
+    : `<span style="font-size:20px">${config.emoji}</span>`;
 
-  // Label
   const label = document.getElementById("status-label");
   label.className = `status-label ${config.dotClass}`;
-  label.textContent = config.label;
+  label.textContent = /timed out/i.test(data?.error || "")
+    ? "BACKEND TIMEOUT"
+    : config.label;
 
-  // Sub label
-  document.getElementById("status-sub").textContent = config.sub;
+  let sub = config.sub;
+  if (state === "loading" && data?.message) sub = data.message;
+  if (state === "offline" && data?.error) sub = data.error;
+  if (state === "error" && data?.error) sub = data.error;
+  if (state === "unavailable" && data?.analysis_status === "partial") {
+    sub = "Backend returned a partial analysis without a final ensemble score.";
+  }
+  if (data?.analysis_status === "partial" && ["safe", "suspicious", "phishing"].includes(state)) {
+    sub = `Partial backend analysis. Final Ensemble Risk: ${state}. See individual engine status below.`;
+  }
+  document.getElementById("status-sub").textContent = sub;
 
-  if (!data || state === "loading" || state === "error") {
-    renderRedirectAnalysis(null);
+  const scoreRow = document.getElementById("conf-row");
+  const score = data?.ensemble_score_percent;
+  if (backendStatus === "online" && typeof score === "number" && Number.isFinite(score)) {
+    scoreRow.style.display = "block";
+    document.getElementById("conf-val").textContent = `${score.toFixed(2)}%`;
+    const fill = document.getElementById("conf-fill");
+    fill.className = `conf-fill ${["safe", "suspicious", "phishing"].includes(state) ? state : "loading"}`;
+    setTimeout(() => { fill.style.width = `${Math.max(0, Math.min(100, score))}%`; }, 50);
+  } else {
+    scoreRow.style.display = "none";
+    document.getElementById("conf-fill").style.width = "0";
+  }
+
+  const reasonBox = document.getElementById("reason-box");
+  const summary = data?.xai_summary || "";
+  if (summary) {
+    reasonBox.style.display = "block";
+    reasonBox.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = "XAI SUMMARY //";
+    const text = document.createElement("p");
+    text.textContent = summary;
+    reasonBox.append(heading, text);
+  } else if (data?.error) {
+    reasonBox.style.display = "block";
+    reasonBox.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = "SERVER RESPONSE //";
+    const text = document.createElement("p");
+    text.textContent = data.error;
+    reasonBox.append(heading, text);
+  } else {
+    reasonBox.style.display = "none";
+    reasonBox.replaceChildren();
+  }
+
+  renderEngineSignals(data);
+  renderRedirectAnalysis(data?.redirect_analysis);
+  renderLocalPreScreen(data?.local_pre_screen);
+
+  const urlBox = document.getElementById("url-box");
+  if (data?.url) {
+    urlBox.style.display = "flex";
+    document.getElementById("url-text").textContent = truncate(data.url, 60);
+  } else {
+    urlBox.style.display = "none";
+  }
+
+  const retryButton = document.getElementById("retry-button");
+  retryButton.style.display = state === "loading" ? "none" : "block";
+  retryButton.disabled = state === "loading";
+}
+
+function renderEngineSignals(data) {
+  const box = document.getElementById("signals-box");
+  const list = document.getElementById("signals-list");
+  list.replaceChildren();
+  const signals = Array.isArray(data?.engine_signals) ? data.engine_signals : [];
+  if (signals.length === 0) {
+    box.style.display = "none";
     return;
   }
 
-  renderRedirectAnalysis(data.redirect_analysis);
+  const labels = {
+    url_ml: "URL ML Signal · Original URL",
+    nlp: "NLP Signal · Submitted Text",
+    vision: "Vision Signal · Submitted Image",
+    domain_intelligence: "Domain Risk Signal · Final URL",
+    threat_intelligence: "Threat Intelligence Signal · Final URL",
+  };
+  signals.forEach(signal => {
+    const row = document.createElement("div");
+    row.className = "engine-signal";
+    const title = document.createElement("strong");
+    title.textContent = labels[signal.source] || signal.engine;
+    const value = document.createElement("span");
+    if (signal.source === "threat_intelligence" && signal.match_status) {
+      value.textContent = signal.match_status;
+    } else if (signal.score_type === "engine_signal" && Number.isFinite(signal.score)) {
+      value.textContent = `${signal.score.toFixed(2)}%`;
+    } else {
+      value.textContent = String(signal.status || "unavailable").toUpperCase();
+    }
+    const detail = document.createElement("small");
+    detail.textContent = signal.reason || `${signal.status || "unavailable"}${signal.url_scope ? ` · ${signal.url_scope.replaceAll("_", " ")}` : ""}`;
+    row.append(title, value, detail);
+    list.appendChild(row);
+  });
+  box.style.display = "block";
+}
 
-  // Confidence bar
-  const confPct = Math.round((data.confidence || 0) * 100);
-  document.getElementById("conf-row").style.display = "block";
-  document.getElementById("conf-val").textContent = `${confPct}%`;
-  const fill = document.getElementById("conf-fill");
-  fill.className = `conf-fill ${state}`;
-  // Small delay so CSS transition fires
-  setTimeout(() => { fill.style.width = `${confPct}%`; }, 50);
-
-  // Reason
-  if (data.reason) {
-    const box = document.getElementById("reason-box");
-    box.style.display = "block";
-    box.textContent = data.reason;
+function renderLocalPreScreen(preScreen) {
+  const box = document.getElementById("local-prescreen");
+  if (!preScreen) {
+    box.style.display = "none";
+    return;
   }
-
-  // Signals
-  if (data.signals && data.signals.length > 0) {
-    const box = document.getElementById("signals-box");
-    box.style.display = "block";
-    const list = document.getElementById("signals-list");
-    list.innerHTML = data.signals
-      .map(s => `<span class="signal-tag ${state === 'phishing' ? 'phishing' : ''}">${escapeHTML(s)}</span>`)
-      .join("");
-  }
-
-  // URL preview
-  if (data.url) {
-    document.getElementById("url-box").style.display = "flex";
-    document.getElementById("url-text").textContent = truncate(data.url, 60);
-  }
-
-  // Cached badge
-  if (data.cached) {
-    document.getElementById("cached-badge").style.display = "inline-block";
-  }
+  document.getElementById("local-prescreen-risk").textContent =
+    `${String(preScreen.risk_level || "unavailable").toUpperCase()} · Local ONNX phishing signal: ${preScreen.phishing_probability_percent}%`;
+  box.style.display = "block";
 }
 
 // Auth Handlers
-const API_BASE = "http://127.0.0.1:8000/api";
-
 async function handleAuth(action) {
   const username = document.getElementById("auth-username").value.trim();
   const password = document.getElementById("auth-password").value.trim();
@@ -176,7 +254,7 @@ async function handleAuth(action) {
   
   errorDiv.textContent = "Loading...";
   try {
-    const res = await fetch(`${API_BASE}/${action}/`, {
+    const res = await fetch(`${API_BASE_URL}/${action}/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password })
@@ -200,28 +278,67 @@ async function handleAuth(action) {
 document.getElementById("auth-login-btn").addEventListener("click", () => handleAuth("login"));
 document.getElementById("auth-register-btn").addEventListener("click", () => handleAuth("register"));
 
-// Main: get active tab → read storage → render
+let activeTabId = null;
+
+async function requestActiveTabScan(force = false) {
+  renderState({
+    state: "loading",
+    backend_status: "connecting",
+    message: "Connecting to the PhishGuard analysis server...",
+  });
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "PHISHGUARD_SCAN_ACTIVE_TAB",
+      force,
+    });
+    if (!response?.ok) {
+      renderState({
+        state: "error",
+        backend_status: "unknown",
+        error: response?.error || "The extension could not start a scan.",
+      });
+      return;
+    }
+    activeTabId = response.tabId;
+    const stored = await chrome.storage.local.get(`tab_${activeTabId}`);
+    if (stored[`tab_${activeTabId}`]) renderState(stored[`tab_${activeTabId}`]);
+  } catch (error) {
+    renderState({
+      state: "offline",
+      backend_status: "offline",
+      error: `Unable to contact the extension service worker: ${error.message}`,
+      server_url: BACKEND_BASE_URL,
+    });
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || activeTabId === null) return;
+  const change = changes[`tab_${activeTabId}`];
+  if (change?.newValue) renderState(change.newValue);
+});
+
+document.getElementById("retry-button").addEventListener("click", () => {
+  requestActiveTabScan(true);
+});
+
+// Recheck backend health and analyze the current tab whenever the popup opens.
 async function init() {
   try {
     const stored = await chrome.storage.local.get(["pg_token"]);
     if (!stored.pg_token) {
       document.getElementById("auth-overlay").style.display = "flex";
-      return;
     } else {
       document.getElementById("auth-overlay").style.display = "none";
     }
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return renderState(null);
-
-    const key = `tab_${tab.id}`;
-    const tabStored = await chrome.storage.local.get(key);
-    const data = tabStored[key];
-
-    renderState(data || null);
+    await requestActiveTabScan(false);
   } catch (err) {
     console.error("PhishGuard popup error:", err);
-    renderState({ state: "error" });
+    renderState({
+      state: "error",
+      backend_status: "unknown",
+      error: `Popup could not initialize: ${err.message}`,
+    });
   }
 }
 

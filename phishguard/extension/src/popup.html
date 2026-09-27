@@ -40,7 +40,8 @@
       background: var(--color-base-bg);
       color: var(--color-text-main);
       font-family: var(--font-body);
-      overflow: hidden;
+      max-height: 640px;
+      overflow-y: auto;
       position: relative;
     }
 
@@ -176,6 +177,15 @@
       background: rgba(0, 229, 255, 0.02);
       position: relative;
     }
+    .reason-box strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--color-neon-cyan);
+      font-family: var(--font-heading);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+    }
+    .reason-box p { margin: 0; }
     
     .reason-box::before {
       content: 'AI ANALYSIS //';
@@ -288,16 +298,48 @@
     }
     .footer-brand { font-family: var(--font-heading); font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
     .footer-brand span { color: var(--color-neon-cyan); }
-    .cached-badge {
-      font-family: var(--font-mono);
-      font-size: 9px;
-      background: rgba(0, 229, 255, 0.1);
-      border: 1px solid var(--color-neon-cyan);
-      border-radius: 4px;
-      padding: 2px 6px;
-      color: var(--color-neon-cyan);
-      text-transform: uppercase;
+    .footer-brand.online { color: var(--color-neon-green); }
+    .footer-brand.offline { color: var(--color-neon-crimson); }
+    .footer-brand.connecting { color: var(--color-neon-cyan); }
+    .footer-brand.unknown { color: var(--color-neon-amber); }
+    .engine-signal {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 11px;
     }
+    .engine-signal:last-child { border-bottom: 0; }
+    .engine-signal strong { color: var(--color-text-main); font-weight: 600; }
+    .engine-signal span { color: var(--color-neon-cyan); font-family: var(--font-mono); }
+    .engine-signal small { grid-column: 1 / -1; color: var(--color-text-muted); font-size: 10px; overflow-wrap: anywhere; }
+    .retry-button {
+      display: block;
+      margin: -4px 16px 16px;
+      width: calc(100% - 32px);
+      padding: 10px 14px;
+      border: 1px solid var(--color-neon-cyan);
+      border-radius: 8px;
+      background: rgba(0,229,255,0.08);
+      color: var(--color-neon-cyan);
+      font-family: var(--font-heading);
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+    }
+    .retry-button:disabled { opacity: 0.5; cursor: wait; }
+    .local-prescreen {
+      display: none;
+      margin: 0 16px 16px;
+      padding: 12px 16px;
+      border: 1px solid var(--color-neon-amber);
+      border-radius: 10px;
+      color: var(--color-neon-amber);
+      font-size: 11px;
+    }
+    .local-prescreen strong { display: block; margin-bottom: 5px; font-family: var(--font-heading); }
+    .local-prescreen span { color: var(--color-text-main); }
 
     /* Loading spinner */
     .spinner {
@@ -409,7 +451,7 @@
 
     <div class="confidence-row" id="conf-row" style="display:none">
       <div class="conf-meta">
-        <span>Threat Confidence</span>
+        <span>Final Ensemble Risk Score</span>
         <span class="conf-val" id="conf-val">0%</span>
       </div>
       <div class="conf-track">
@@ -420,9 +462,16 @@
     <div class="reason-box" id="reason-box" style="display:none"></div>
 
     <div class="signals-box" id="signals-box" style="display:none">
-      <div class="signals-title">Extracted Signals</div>
+      <div class="signals-title">Individual Engine Signals</div>
       <div class="signals-list" id="signals-list"></div>
     </div>
+  </div>
+
+  <button class="retry-button" id="retry-button" type="button" style="display:none">RETRY ANALYSIS</button>
+
+  <div class="local-prescreen" id="local-prescreen">
+    <strong>LOCAL PRE-SCREEN ONLY · NOT A FINAL RESULT</strong>
+    <span id="local-prescreen-risk"></span>
   </div>
 
   <!-- URL Preview -->
@@ -443,10 +492,9 @@
 
   <!-- Footer -->
   <div class="footer">
-    <span class="footer-brand"><span>System</span> Online</span>
-    <span class="cached-badge" id="cached-badge" style="display:none">Cache Hit</span>
+    <span class="footer-brand connecting" id="backend-indicator">CONNECTING TO PHISHGUARD...</span>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

@@ -140,15 +140,18 @@ def _severity_for_score(score: float) -> str:
 
 
 def _build_xai_summary(risk_level: str, risk_factors: list, safety_factors: list) -> str:
+    if risk_level == 'unavailable':
+        return "No valid engine score was available to produce a final ensemble assessment."
+
     if risk_level == "safe":
         if safety_factors:
             ti_factor = next((f for f in safety_factors if 'threat-intelligence' in (f.get('title', '') + ' ' + f.get('description', '')).lower() or 'no match' in (f.get('description', '') or '').lower()), None)
             if ti_factor and ti_factor.get('description'):
-                return f"PhishGuard found no strong phishing indicators in the available analysis. {ti_factor['description']}"
+                return f"Available engine scores produced a safe ensemble result. {ti_factor['description']}"
             support = safety_factors[0].get('description', '')
             if support:
-                return f"PhishGuard found no strong phishing indicators in the available analysis. {support}"
-        return "PhishGuard found no strong phishing indicators in the available analysis."
+                return f"Available engine scores produced a safe ensemble result. {support}"
+        return "Available engine scores produced a safe ensemble result; no additional supporting evidence was reported."
 
     if risk_factors:
         reasons = [factor.get('description', '').rstrip('.') for factor in risk_factors[:2] if factor.get('description')]
@@ -165,20 +168,39 @@ def _signal_from_engine_score(score: float) -> str:
     return "safe"
 
 
-def _build_engine_signals(scores: dict, domain_result: dict, threat_result: dict | None = None) -> list:
+def _build_engine_signals(
+    scores: dict,
+    domain_result: dict | None,
+    threat_result: dict | None = None,
+    engine_status: dict | None = None,
+) -> list:
     engine_map = {
-        'ml': 'URL Intelligence',
-        'nlp': 'Text Intelligence',
-        'vision': 'Visual Intelligence',
-        'domain': 'Domain Intelligence',
+        'ml': ('URL Intelligence', 'url_ml'),
+        'nlp': ('Text Intelligence', 'nlp'),
+        'vision': ('Visual Intelligence', 'vision'),
+        'domain': ('Domain Intelligence', 'domain_intelligence'),
     }
     signals = []
-    for key, label in engine_map.items():
-        value = float(scores.get(key, 0.0) or 0.0)
-        signals.append({
+    for key, (label, status_key) in engine_map.items():
+        status_info = (engine_status or {}).get(status_key, {})
+        status = status_info.get('status', 'available')
+        value = scores.get(key)
+        input_scope = {
+            'ml': 'original_url',
+            'nlp': 'submitted_text',
+            'vision': 'submitted_image',
+            'domain': 'final_url',
+        }[key]
+        if key == 'vision':
+            input_scope = status_info.get('input_scope', input_scope)
+        if key in ('nlp', 'vision') and status_info.get('applicable') is False:
+            input_scope = 'not_submitted'
+        elif key == 'domain' and status == 'restricted':
+            input_scope = 'not_collected'
+        signal = {
             'engine': label,
-            'score': round(value * 100, 2),
-            'risk_level': _signal_from_engine_score(value),
+            'status': status,
+            'risk_level': _signal_from_engine_score(value) if status == 'available' and value is not None else status,
             'source': {
                 'ml': 'url_ml',
                 'nlp': 'nlp',
@@ -186,13 +208,13 @@ def _build_engine_signals(scores: dict, domain_result: dict, threat_result: dict
                 'domain': 'domain_intelligence',
             }[key],
             'score_type': 'engine_signal',
-            'url_scope': {
-                'ml': 'original_url',
-                'nlp': 'submitted_text',
-                'vision': 'submitted_image',
-                'domain': 'final_url',
-            }[key],
-        })
+            'url_scope': input_scope,
+        }
+        if status == 'available' and isinstance(value, (int, float)):
+            signal['score'] = round(float(value) * 100, 2)
+        if status_info.get('reason'):
+            signal['reason'] = status_info['reason']
+        signals.append(signal)
 
     ti_hits = 0
     ti_sources = []
@@ -204,45 +226,105 @@ def _build_engine_signals(scores: dict, domain_result: dict, threat_result: dict
         ti_hits = int(ti_details.get('ti_hits', 0) or 0)
         ti_sources = ti_details.get('ti_sources', []) or []
 
-    signals.append({
+    ti_status = (engine_status or {}).get('threat_intelligence', {})
+    ti_is_available = ti_status.get('status', 'available' if threat_result else 'unavailable') == 'available'
+    ti_signal = {
         'engine': 'Threat Intelligence',
-        'score': 100.0 if ti_hits > 0 else 0.0,
-        'risk_level': 'phishing' if ti_hits > 0 else 'safe',
-        'match_status': 'MATCH' if ti_hits > 0 else 'NO MATCH',
-        'sources': ti_sources,
+        'status': ti_status.get('status', 'available' if threat_result else 'unavailable'),
+        'risk_level': ('phishing' if ti_hits > 0 else 'safe') if ti_is_available else 'unavailable',
         'source': 'threat_intelligence',
         'score_type': 'match_signal',
-        'url_scope': 'final_url',
-    })
+        'url_scope': ti_status.get('url_scope', 'final_url'),
+    }
+    if ti_is_available:
+        ti_signal['score'] = 100.0 if ti_hits > 0 else 0.0
+        ti_signal['match_status'] = 'MATCH' if ti_hits > 0 else 'NO MATCH'
+        ti_signal['sources'] = ti_sources
+    if ti_status.get('reason'):
+        ti_signal['reason'] = ti_status['reason']
+    signals.append(ti_signal)
 
     return signals
 
 
 def _build_feature_importance(ml_result: dict | None, nlp_result: dict | None, vision_result: dict | None) -> list:
     features = []
-    for label, source, payload in [
-        ('url', 'url', ml_result.get('shap_features') if ml_result else []),
-        ('text', 'text', nlp_result.get('shap_features') if nlp_result else []),
-        ('vision', 'vision', vision_result.get('gradcam_features') if vision_result else []),
+    for label, source, url_scope, payload in [
+        ('url', 'url', 'original_url', ml_result.get('shap_features') if ml_result else []),
+        ('text', 'text', 'submitted_text', nlp_result.get('shap_features') if nlp_result else []),
+        ('vision', 'vision', 'submitted_image', vision_result.get('gradcam_features') if vision_result else []),
     ]:
         for item in payload or []:
             if label == 'vision':
                 feature_name = item.get('feature')
-                impact = float(item.get('gradcam_activation', 0) or 0)
+                raw_impact = item.get('gradcam_activation')
                 value = item.get('feature')
+                method = 'grad_cam'
             else:
                 feature_name = item.get('feature')
-                impact = float(item.get('shap_value', item.get('importance', 0)) or 0)
+                if 'shap_value' in item:
+                    raw_impact = item.get('shap_value')
+                    method = 'shap'
+                elif 'importance' in item:
+                    raw_impact = item.get('importance')
+                    method = 'catboost_feature_importance'
+                else:
+                    continue
                 value = item.get('value')
-            if not feature_name:
+            if not feature_name or not isinstance(raw_impact, (int, float)):
                 continue
             features.append({
                 'feature': feature_name,
                 'value': value,
-                'impact': round(impact, 4),
+                'impact': round(float(raw_impact), 4),
                 'source': source,
+                'method': method,
+                'url_scope': url_scope,
             })
     return sorted(features, key=lambda f: abs(float(f['impact'] or 0)), reverse=True)[:8]
+
+
+def _build_domain_xai_evidence(domain_result: dict | None, threat_result: dict | None) -> tuple[dict | None, dict | None]:
+    if not domain_result:
+        return None, None
+
+    metadata = domain_result.get('metadata') or {}
+    metadata_fields = (
+        'domain',
+        'registrable_domain',
+        'age_days',
+        'ssl_valid',
+        'ssl_issuer',
+        'ssl_error',
+        'resolved_ips',
+        'mx_records',
+        'rdns',
+        'error',
+    )
+    domain_evidence = {
+        'status': domain_result.get(
+            'status',
+            'available' if domain_result.get('domain_score') is not None else 'unavailable',
+        ),
+        'reason': domain_result.get('reason'),
+        'final_url': domain_result.get('final_url'),
+        'domain_score': domain_result.get('domain_score'),
+        'domain_risk_level': domain_result.get('domain_risk_level'),
+        'metadata': {key: metadata[key] for key in metadata_fields if key in metadata},
+    }
+
+    ti = threat_result or domain_result.get('ti_details') or metadata.get('ti_summary') or {}
+    ti_status = domain_result.get('ti_status') or {}
+    threat_evidence = {
+        'status': ti_status.get('status', ti.get('status', 'unavailable')),
+        'reason': ti_status.get('reason') or ti.get('reason'),
+        'url_scope': ti_status.get('url_scope', 'final_url'),
+        'ti_hits': ti.get('ti_hits'),
+        'ti_sources': ti.get('ti_sources', []),
+        'is_exact_url_match': ti.get('is_exact_url_match'),
+        'unavailable_sources': ti.get('unavailable_sources', ti_status.get('unavailable_sources', [])),
+    }
+    return domain_evidence, threat_evidence
 
 
 def _build_xai_structured(
@@ -255,25 +337,54 @@ def _build_xai_structured(
     domain_result: dict | None,
     threat_result: dict | None,
     redirect_analysis: dict | None = None,
+    engine_status: dict | None = None,
 ) -> dict:
     risk_factors = []
     safety_factors = []
+    raw_url_probability = _valid_engine_score(ml_result.get('ml_score')) if ml_result else None
+    url_engine_signal = _valid_engine_score(scores.get('ml'))
+    raw_url_probability_percent = (
+        round(raw_url_probability * 100, 2) if raw_url_probability is not None else None
+    )
+    url_engine_signal_percent = (
+        round(url_engine_signal * 100, 2) if url_engine_signal is not None else None
+    )
+    url_signal_adjusted = (
+        raw_url_probability_percent is not None
+        and url_engine_signal_percent is not None
+        and raw_url_probability_percent != url_engine_signal_percent
+    )
+    url_ml_evidence = {
+        'raw_model_probability_percent': raw_url_probability_percent,
+        'engine_signal_percent': url_engine_signal_percent,
+        'engine_signal_adjustment': 'domain_age_moderation' if url_signal_adjusted else None,
+    } if raw_url_probability_percent is not None else None
     metadata = domain_result.get('metadata', {}) if domain_result else {}
     domain_signals = domain_result.get('domain_signals', []) if domain_result else []
     age_days = metadata.get('age_days')
     ssl_valid = bool(metadata.get('ssl_valid'))
 
-    if ml_result and float(ml_result.get('ml_score', 0) or 0) > 0.5:
+    if raw_url_probability is not None and raw_url_probability > 0.5:
         risk_factors.append({
             'title': 'URL model risk',
-            'description': f"URL analysis returned a phishing probability of {float(ml_result.get('ml_score', 0) or 0):.2f}. The model flagged the URL structure as risky.",
-            'severity': _severity_for_score(float(ml_result.get('ml_score', 0) or 0)),
+            'description': (
+                f"Raw URL-model probability: {raw_url_probability_percent:.2f}%. "
+                f"URL ML engine signal used in fusion: {url_engine_signal_percent:.2f}%"
+                f"{' after existing domain-age moderation' if url_signal_adjusted else ''}. "
+                'The model flagged the URL structure as risky.'
+            ),
+            'severity': _severity_for_score(raw_url_probability),
             'source': 'url',
         })
-    elif ml_result and float(ml_result.get('ml_score', 0) or 0) <= 0.25:
+    elif raw_url_probability is not None and raw_url_probability <= 0.25:
         safety_factors.append({
             'title': 'Low-risk URL signal',
-            'description': f"The URL model assigned a phishing probability of {float(ml_result.get('ml_score', 0) or 0):.2f}, which is below the suspicious threshold.",
+            'description': (
+                f"Raw URL-model probability: {raw_url_probability_percent:.2f}%. "
+                f"URL ML engine signal used in fusion: {url_engine_signal_percent:.2f}%"
+                f"{' after existing domain-age moderation' if url_signal_adjusted else ''}. "
+                'The raw probability is below the suspicious threshold.'
+            ),
             'source': 'url',
         })
 
@@ -357,10 +468,12 @@ def _build_xai_structured(
         if not ti_hits:
             ti_details = domain_result.get('ti_details') or domain_result.get('metadata', {}).get('ti_summary') or {}
             ti_hits = int(ti_details.get('ti_hits', 0) or 0)
-        if ti_hits == 0:
+        ti_status = (engine_status or {}).get('threat_intelligence', {})
+        ti_available = ti_status.get('status', 'available' if threat_result else 'unavailable') == 'available'
+        if ti_hits == 0 and ti_available:
             safety_factors.append({
                 'title': 'Threat-intelligence check',
-                'description': 'Threat-intelligence checks returned no threat-intelligence match for this target.',
+                'description': 'Available threat-intelligence sources returned no threat-intelligence match for this target. This is not proof that the target is safe.',
                 'source': 'threat_intelligence',
             })
         if age_days is not None and age_days > 365 and ssl_valid:
@@ -383,7 +496,7 @@ def _build_xai_structured(
             })
 
     # If there were no explicit risk factors and the score is still risky, keep a generic evidence note.
-    if risk_level != 'safe' and not risk_factors and scores:
+    if risk_level in ('phishing', 'suspicious') and not risk_factors and scores:
         risk_factors.append({
             'title': 'Engine-level risk evidence',
             'description': 'The model stack produced a combined phishing signal, but the individual engine evidence was not detailed enough to assign a more specific factor.',
@@ -394,7 +507,7 @@ def _build_xai_structured(
     if risk_level == 'safe' and not safety_factors:
         safety_factors.append({
             'title': 'No strong risk indicators',
-            'description': 'The available engines did not produce strong phishing evidence in the current analysis.',
+            'description': 'The available engines did not produce strong phishing evidence in the current analysis. This does not establish that the target is safe outside the available evidence.',
             'source': 'url',
         })
 
@@ -445,21 +558,117 @@ def _build_xai_structured(
                 'severity': 'medium',
                 'source': 'redirect',
             })
+        elif redirect_state == 'blocked':
+            blocked_reason = redirect_analysis.get('blocked_reason') or 'The destination was blocked by URL safety validation.'
+            redirect_evidence.append({
+                'title': 'Redirect resolution restricted',
+                'description': f'{blocked_reason} This restriction is not itself evidence of phishing.',
+                'source': 'redirect',
+                'status': 'restricted',
+            })
 
     summary = _build_xai_summary(risk_level, risk_factors, safety_factors)
+    status_map = engine_status or {}
+    restricted_engines = [
+        name.replace('_', ' ')
+        for name, info in status_map.items()
+        if info.get('applicable', True) and info.get('status') == 'restricted'
+    ]
+    unavailable_engines = [
+        name.replace('_', ' ')
+        for name, info in status_map.items()
+        if info.get('applicable', True) and info.get('status') in ('unavailable', 'error')
+    ]
+    if restricted_engines:
+        summary += (
+            ' Network-based evidence was restricted for this destination '
+            f'({", ".join(restricted_engines)}); that restriction is not itself evidence of phishing.'
+        )
+    elif unavailable_engines:
+        summary += f' Some applicable evidence was unavailable ({", ".join(unavailable_engines)}).'
+    domain_xai, threat_xai = _build_domain_xai_evidence(domain_result, threat_result)
     xai = {
         'summary': summary,
         'risk_factors': risk_factors,
         'safety_factors': safety_factors,
-        'engine_signals': _build_engine_signals(scores, domain_result, threat_result),
+        'url_ml_evidence': url_ml_evidence,
+        'engine_signals': _build_engine_signals(scores, domain_result, threat_result, engine_status),
+        'engine_status': engine_status or {},
         'feature_importance': _build_feature_importance(ml_result, nlp_result, vision_result),
         'redirect_analysis': redirect_analysis,
         'redirect_evidence': redirect_evidence,
+        'domain_intelligence': domain_xai,
+        'threat_intelligence': threat_xai,
     }
     return xai
 
 
-async def calculate_ensemble_score(url: str, text: str = None, image_bytes: bytes = None) -> dict:
+def _valid_engine_score(value) -> float | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    return score if np.isfinite(score) and 0.0 <= score <= 1.0 else None
+
+
+# ── Applicability semantics (single source of truth) ─────────────────────────
+# The four engines that take part in score fusion, keyed by engine_status name.
+FUSION_ENGINE_KEYS = ('url_ml', 'nlp', 'vision', 'domain_intelligence')
+
+# Configured fusion weights. Values are unchanged; they are renormalised over
+# the engines that actually ran (see calculate_ensemble_score).
+FUSION_WEIGHTS = {'ml': 0.35, 'nlp': 0.15, 'vision': 0.20, 'domain': 0.30}
+
+
+def _is_applicable(status: dict) -> bool:
+    """True unless the engine explicitly reported `applicable: False`.
+
+    `applicable: False` means "this engine is not relevant to this scan input",
+    i.e. it never ran. Such an engine must not contribute evidence, must not
+    contribute weight, and must not make a scan partial.
+    """
+    return bool(status.get('applicable', True))
+
+
+def _is_available(status: dict) -> bool:
+    """True only for an engine that is applicable *and* returned a score."""
+    return _is_applicable(status) and status.get('status') == 'available'
+
+
+def _meta_learner_score(scores: dict) -> float | None:
+    """Run the meta-learner on the four engine scores.
+
+    Returns None when no model can be loaded or when prediction fails, so the
+    caller can fall back to weighted fusion. The caller must only report
+    ``fusion_method == 'meta_learner'`` when this returns a usable score.
+    """
+    try:
+        clf = get_meta_learner()
+    except Exception as e:
+        logging.error("Meta-learner could not be loaded: %s", e)
+        return None
+    if clf is None:
+        return None
+
+    try:
+        X = np.array([[scores['ml'], scores['nlp'], scores['vision'], scores['domain']]])
+        predicted = clf.predict_proba(X)[0][1]
+    except Exception as e:
+        logging.error("Meta-learner prediction failed; using weighted fusion instead: %s", e)
+        return None
+
+    score = _valid_engine_score(predicted)
+    if score is None:
+        logging.error("Meta-learner returned an unusable score: %r", predicted)
+    return score
+
+
+async def calculate_ensemble_score(
+    url: str,
+    text: str = None,
+    image_bytes: bytes = None,
+    vision_status: dict | None = None,
+) -> dict:
     """
     Fuses outputs from URL ML, NLP, Vision, and Domain Intelligence into a single score using Meta-Learner.
     No whitelists — purely engine-driven classification.
@@ -473,6 +682,39 @@ async def calculate_ensemble_score(url: str, text: str = None, image_bytes: byte
         pass
 
     scores = {'ml': 0.0, 'nlp': 0.0, 'vision': 0.0, 'domain': 0.0}
+    score_keys = set()
+    engine_status = {
+        'url_ml': {
+            'status': 'unavailable',
+            'reason': 'URL ML model is not ready.',
+            'applicable': True,
+        },
+        'nlp': {
+            'status': 'unavailable',
+            'reason': 'No text input was submitted.',
+            'applicable': bool(text),
+        },
+        'vision': vision_status or {
+            'status': 'unavailable',
+            'reason': 'No screenshot or image was available.',
+            'applicable': bool(image_bytes),
+        },
+        'domain_intelligence': {
+            'status': 'unavailable',
+            'reason': 'Domain Intelligence did not return a result.',
+            'applicable': True,
+        },
+        'threat_intelligence': {
+            'status': 'unavailable',
+            'reason': 'Threat Intelligence did not return a result.',
+            'applicable': True,
+        },
+        'redirect': {
+            'status': 'unavailable',
+            'reason': 'Redirect analysis did not return a result.',
+            'applicable': True,
+        },
+    }
     redirect_analysis = {
         'original_url': url,
         'final_url': url,
@@ -490,19 +732,39 @@ async def calculate_ensemble_score(url: str, text: str = None, image_bytes: byte
     shap_url = []
     shap_nlp = []
     gradcam_vision = []
+    ml_result = None
+    nlp_result = None
+    vision_result = None
     
     # 1. URL ML Engine (Module 1)
     if ML_READY and url:
         try:
-            ml_res = predict_url(url)
-            if ml_res:
-                scores['ml'] = ml_res['ml_score']
-                if ml_res['ml_score'] > 0.5:
-                    reasons.append(f"URL analysis flagged high risk ({ml_res['ml_score']:.2f})")
-                if 'shap_features' in ml_res:
-                    shap_url = ml_res['shap_features']
+            ml_result = predict_url(url)
+            if ml_result:
+                ml_score = _valid_engine_score(ml_result.get('ml_score'))
+                if ml_score is not None:
+                    scores['ml'] = ml_score
+                    score_keys.add('ml')
+                    engine_status['url_ml'] = {'status': 'available', 'applicable': True}
+                    if ml_score > 0.5:
+                        reasons.append(f"URL analysis flagged high risk ({ml_score:.2f})")
+                else:
+                    engine_status['url_ml'] = {
+                        'status': 'error',
+                        'reason': 'URL ML did not return a valid score.',
+                        'applicable': True,
+                    }
+                if 'shap_features' in ml_result:
+                    shap_url = ml_result['shap_features']
+            else:
+                engine_status['url_ml'] = {
+                    'status': 'error',
+                    'reason': 'URL ML did not return a result.',
+                    'applicable': True,
+                }
         except Exception as e:
             logging.error(f"ML module error: {e}")
+            engine_status['url_ml'] = {'status': 'error', 'reason': str(e), 'applicable': True}
 
     # 2. Domain Intelligence & Redirects (Module 4). URL ML above continues
     # to score the original submitted URL; redirects are domain evidence only.
@@ -514,78 +776,257 @@ async def calculate_ensemble_score(url: str, text: str = None, image_bytes: byte
             if domain_res:
                 domain_result = domain_res
                 redirect_analysis = domain_res.get('redirect_analysis', redirect_analysis)
-                scores['domain'] = domain_res['domain_score']
-                domain_age_days = domain_res.get('metadata', {}).get('age_days')
-                for sig in domain_res.get('domain_signals', []):
-                    reasons.append(f"Domain flagged for {sig.replace('_', ' ')}")
+                reported_domain_status = domain_res.get('status')
+                domain_score = _valid_engine_score(domain_res.get('domain_score'))
+                if reported_domain_status == 'restricted':
+                    engine_status['domain_intelligence'] = {
+                        'status': 'restricted',
+                        'reason': domain_res.get('reason', 'Network/domain inspection was restricted.'),
+                        'applicable': True,
+                    }
+                elif domain_score is not None:
+                    scores['domain'] = domain_score
+                    score_keys.add('domain')
+                    engine_status['domain_intelligence'] = {'status': 'available', 'applicable': True}
+                    domain_age_days = (domain_res.get('metadata') or {}).get('age_days')
+                    for sig in domain_res.get('domain_signals', []):
+                        reasons.append(f"Domain flagged for {sig.replace('_', ' ')}")
+                else:
+                    engine_status['domain_intelligence'] = {
+                        'status': reported_domain_status if reported_domain_status in ('restricted', 'unavailable', 'error') else 'error',
+                        'reason': domain_res.get('reason', 'Domain Intelligence did not return a valid score.'),
+                        'applicable': True,
+                    }
+
+                ti_details = domain_res.get('ti_details') or (domain_res.get('metadata') or {}).get('ti_summary')
+                reported_ti_status = domain_res.get('ti_status') or {}
+                if reported_ti_status.get('status') in ('available', 'restricted', 'unavailable', 'error'):
+                    engine_status['threat_intelligence'] = {
+                        **reported_ti_status,
+                        'applicable': True,
+                    }
+                elif ti_details is not None:
+                    engine_status['threat_intelligence'] = {'status': 'available', 'applicable': True}
+                else:
+                    engine_status['threat_intelligence'] = {
+                        'status': 'unavailable',
+                        'reason': 'Threat-intelligence lookup returned no status or result.',
+                        'applicable': True,
+                    }
         except Exception as e:
             logging.error(f"Domain module error: {e}")
+            engine_status['domain_intelligence'] = {'status': 'error', 'reason': str(e), 'applicable': True}
+            engine_status['threat_intelligence'] = {'status': 'error', 'reason': str(e), 'applicable': True}
+
+    redirect_state = redirect_analysis.get('resolution_state', 'unavailable')
+    if redirect_state == 'completed':
+        engine_status['redirect'] = {'status': 'available', 'applicable': True}
+    elif redirect_state == 'blocked':
+        engine_status['redirect'] = {
+            'status': 'restricted',
+            'reason': redirect_analysis.get('blocked_reason') or 'Unsafe destination blocked by URL validation.',
+            'applicable': True,
+        }
+    elif redirect_state in ('loop', 'limit_exceeded'):
+        engine_status['redirect'] = {
+            'status': 'unavailable',
+            'reason': f'Redirect resolution ended with state: {redirect_state}.',
+            'applicable': True,
+        }
+    elif redirect_state == 'failed':
+        engine_status['redirect'] = {
+            'status': 'error',
+            'reason': '; '.join(redirect_analysis.get('errors', [])) or 'Redirect analysis failed.',
+            'applicable': True,
+        }
+    else:
+        engine_status['redirect'] = {
+            'status': 'unavailable',
+            'reason': 'Redirect analysis was not available.',
+            'applicable': True,
+        }
             
     # 3. Vision Engine (Module 3)
     if VISION_READY and image_bytes:
         try:
-            vision_res = analyze_image_with_vision(image_bytes)
-            if vision_res:
-                scores['vision'] = vision_res['vision_score']
-                if vision_res['vision_score'] > 0.5:
-                    reasons.append(f"Visual layout imitation detected ({vision_res['vision_score']:.2f})")
-                if 'gradcam_features' in vision_res:
-                    gradcam_vision = vision_res['gradcam_features']
+            vision_result = analyze_image_with_vision(image_bytes)
+            if vision_result:
+                vision_score = _valid_engine_score(vision_result.get('vision_score'))
+                if vision_score is not None:
+                    scores['vision'] = vision_score
+                    score_keys.add('vision')
+                    engine_status['vision'] = {
+                        'status': 'available',
+                        'applicable': True,
+                        'input_scope': (vision_status or {}).get('input_scope', 'submitted_image'),
+                    }
+                    if vision_score > 0.5:
+                        reasons.append(f"Visual layout imitation detected ({vision_score:.2f})")
+                else:
+                    engine_status['vision'] = {
+                        'status': 'error',
+                        'reason': 'Vision did not return a valid score.',
+                        'applicable': True,
+                        'input_scope': (vision_status or {}).get('input_scope', 'submitted_image'),
+                    }
+                if 'gradcam_features' in vision_result:
+                    gradcam_vision = vision_result['gradcam_features']
+            else:
+                engine_status['vision'] = {
+                    'status': 'error',
+                    'reason': 'Vision did not return a result.',
+                    'applicable': True,
+                    'input_scope': (vision_status or {}).get('input_scope', 'submitted_image'),
+                }
         except Exception as e:
             logging.error(f"Vision module error: {e}")
+            engine_status['vision'] = {
+                'status': 'error',
+                'reason': str(e),
+                'applicable': True,
+                'input_scope': (vision_status or {}).get('input_scope', 'submitted_image'),
+            }
+    elif vision_status is not None and vision_status.get('status') != 'available':
+        engine_status['vision'] = {
+            **vision_status,
+            'applicable': vision_status.get('applicable', True),
+        }
+    elif vision_status is not None:
+        engine_status['vision'] = {
+            'status': 'unavailable',
+            'reason': 'A screenshot was captured, but the Vision model did not return a score.',
+            'applicable': vision_status.get('applicable', True),
+        }
+    elif image_bytes:
+        engine_status['vision'] = {
+            'status': 'unavailable',
+            'reason': 'Vision model is not ready.',
+            'applicable': True,
+        }
+    else:
+        engine_status['vision'] = {
+            'status': 'unavailable',
+            'reason': 'No screenshot or image was available.',
+            'applicable': False,
+        }
             
     # 4. NLP Engine (Module 2)
     if NLP_READY and text:
         try:
-            nlp_res = analyze_text_with_nlp(text)
-            if nlp_res:
-                scores['nlp'] = nlp_res['nlp_score']
-                keywords = nlp_res.get('suspicious_keywords', [])
+            nlp_result = analyze_text_with_nlp(text)
+            if nlp_result:
+                nlp_score = _valid_engine_score(nlp_result.get('nlp_score'))
+                if nlp_score is not None:
+                    scores['nlp'] = nlp_score
+                    score_keys.add('nlp')
+                    engine_status['nlp'] = {'status': 'available', 'applicable': True}
+                else:
+                    engine_status['nlp'] = {
+                        'status': 'error',
+                        'reason': 'NLP did not return a valid score.',
+                        'applicable': True,
+                    }
+                keywords = nlp_result.get('suspicious_keywords', [])
                 if keywords:
                     reasons.append(f"Urgency/phishing keywords found: {', '.join(keywords)}")
-                if 'shap_features' in nlp_res:
-                    shap_nlp = nlp_res['shap_features']
+                if 'shap_features' in nlp_result:
+                    shap_nlp = nlp_result['shap_features']
+            else:
+                engine_status['nlp'] = {
+                    'status': 'error',
+                    'reason': 'NLP did not return a result.',
+                    'applicable': True,
+                }
         except Exception as e:
             logging.error(f"NLP module error: {e}")
-
-    # Compute Meta-Learner Prediction
-    clf = get_meta_learner()
-    if clf:
-        X = np.array([[scores['ml'], scores['nlp'], scores['vision'], scores['domain']]])
-        final_score = clf.predict_proba(X)[0][1] # Probability of Phishing (class 1)
+            engine_status['nlp'] = {'status': 'error', 'reason': str(e), 'applicable': True}
+    elif text:
+        engine_status['nlp'] = {
+            'status': 'unavailable',
+            'reason': 'NLP model is not ready.',
+            'applicable': True,
+        }
     else:
-        # Multi-Modal Correlation:
-        # If the domain is highly established (e.g., > 2 years old), structural ML anomalies 
-        # (like deep Wikipedia paths or subdomains) are likely benign false positives.
-        if domain_age_days is not None:
-            if domain_age_days > 1825: # > 5 years old
-                scores['ml'] = scores['ml'] * 0.05
-                reasons = [r for r in reasons if "URL analysis flagged" not in r]
-            elif domain_age_days > 730: # > 2 years old
-                scores['ml'] = scores['ml'] * 0.20
-                if scores['ml'] < 0.5:
-                    reasons = [r for r in reasons if "URL analysis flagged" not in r]
-            elif domain_age_days > 365: # > 1 year old
-                scores['ml'] = scores['ml'] * 0.50
-                if scores['ml'] < 0.5:
-                    reasons = [r for r in reasons if "URL analysis flagged" not in r]
+        engine_status['nlp'] = {
+            'status': 'unavailable',
+            'reason': 'No text input was submitted.',
+            'applicable': False,
+        }
 
-        # Weighted average of ALL 4 engines (not just active ones).
-        # This ensures that when 3 engines say safe (0%) and 1 says moderate risk,
-        # the final score reflects reality instead of inflating the single engine's score.
-        # Weights: ML=0.35, Domain=0.30, Vision=0.20, NLP=0.15
-        weights = {'ml': 0.35, 'nlp': 0.15, 'vision': 0.20, 'domain': 0.30}
-        final_score = sum(scores[k] * weights[k] for k in scores)
-    
-    # Classify
-    if final_score >= 0.7:
+    # analysis_status is evaluated over *applicable* engines only: an engine
+    # that did not run (applicable: False) is not a failure, so it alone can
+    # never make a scan partial.
+    incomplete_evidence = any(
+        _is_applicable(item) and item.get('status') != 'available'
+        for item in engine_status.values()
+    )
+    analysis_status = 'partial' if incomplete_evidence else 'complete'
+
+    # The meta-learner consumes a fixed [ml, nlp, vision, domain] vector, so it
+    # may only run when every fusion engine produced a measurement. Feeding it
+    # engines that never ran would encode "not measured" as "measured 0.0".
+    fusion_vector_complete = all(
+        _is_available(engine_status.get(key, {})) for key in FUSION_ENGINE_KEYS
+    )
+
+    # fusion_method describes the method that ACTUALLY produced final_score.
+    # It is only set to 'meta_learner' after a successful prediction, never
+    # optimistically before the model is loaded.
+    final_score = None
+    fusion_method = 'unavailable'
+
+    if not score_keys:
+        # No applicable engine produced a measurement: there is nothing to fuse.
+        analysis_status = 'failed'
+    else:
+        if fusion_vector_complete:
+            meta_score = _meta_learner_score(scores)
+            if meta_score is not None:
+                final_score = meta_score
+                fusion_method = 'meta_learner'
+
+        if final_score is None:
+            # Weighted fallback — also used when the meta-learner is unavailable
+            # or its prediction failed.
+
+            # Multi-Modal Correlation:
+            # If the domain is highly established (e.g., > 2 years old), structural ML anomalies
+            # are likely benign false positives.
+            if domain_age_days is not None:
+                if domain_age_days > 1825:
+                    scores['ml'] = scores['ml'] * 0.05
+                    reasons = [r for r in reasons if "URL analysis flagged" not in r]
+                elif domain_age_days > 730:
+                    scores['ml'] = scores['ml'] * 0.20
+                    if scores['ml'] < 0.5:
+                        reasons = [r for r in reasons if "URL analysis flagged" not in r]
+                elif domain_age_days > 365:
+                    scores['ml'] = scores['ml'] * 0.50
+                    if scores['ml'] < 0.5:
+                        reasons = [r for r in reasons if "URL analysis flagged" not in r]
+
+            # Keep the configured weights unchanged, but renormalise them over
+            # the engines that actually ran. Without this, engines with
+            # applicable: False would silently leave part of the total weight
+            # attributed to an unmeasured "0.0 = safe".
+            active_weight = sum(FUSION_WEIGHTS[key] for key in score_keys)
+            final_score = sum(scores[key] * FUSION_WEIGHTS[key] for key in score_keys) / active_weight
+            fusion_method = 'weighted_available_engines'
+
+    if final_score is None:
+        risk_level = 'unavailable'
+    elif final_score >= 0.7:
         risk_level = "phishing"
     elif final_score >= 0.35:
         risk_level = "suspicious"
     else:
         risk_level = "safe"
         if not reasons:
-            reasons.append("All provided signals appear safe.")
+            reasons.append(
+                "Available engine scores remained below the suspicious threshold."
+                if analysis_status == 'partial'
+                else "All provided signals appear safe."
+            )
 
     # Build structured XAI evidence using actual engine outputs, SHAP, and domain metadata.
     threat_result = None
@@ -593,25 +1034,6 @@ async def calculate_ensemble_score(url: str, text: str = None, image_bytes: byte
         ti_details = domain_result.get('ti_details') or domain_result.get('metadata', {}).get('ti_summary')
         if ti_details:
             threat_result = ti_details
-
-    ml_result = None
-    nlp_result = None
-    vision_result = None
-    if ML_READY and url:
-        try:
-            ml_result = predict_url(url)
-        except Exception:
-            ml_result = None
-    if NLP_READY and text:
-        try:
-            nlp_result = analyze_text_with_nlp(text)
-        except Exception:
-            nlp_result = None
-    if VISION_READY and image_bytes:
-        try:
-            vision_result = analyze_image_with_vision(image_bytes)
-        except Exception:
-            vision_result = None
 
     xai_payload = _build_xai_structured(
         url=url,
@@ -623,24 +1045,29 @@ async def calculate_ensemble_score(url: str, text: str = None, image_bytes: byte
         domain_result=domain_result,
         threat_result=threat_result,
         redirect_analysis=redirect_analysis,
+        engine_status=engine_status,
     )
 
-    # XAI LLM Summary for High/Medium risk
+    # The displayed XAI summary is deterministic structured evidence. Do not replace
+    # it with free-form LLM output: an LLM narrative cannot be verified against the
+    # evidence returned for this scan and may imply observations that were unavailable.
     xai_summary = xai_payload['summary']
-    if risk_level in ["phishing", "suspicious"]:
-        generated = generate_xai_summary(reasons, shap_nlp, shap_url, gradcam_vision, url, round(final_score * 100, 2))
-        if generated:
-            xai_summary = generated
-            xai_payload['summary'] = generated
 
     xai_payload['summary'] = xai_summary
+    # Only engines that produced a measurement are reported. An engine with
+    # applicable: False is absent rather than reported as a measured 0.0;
+    # its availability/applicability is exposed separately in engine_status.
+    returned_scores = {key: scores[key] for key in score_keys}
     return {
-        "ensemble_score_percent": round(final_score * 100, 2),
-        "confidence": round(final_score * 100, 2),
+        "ensemble_score_percent": round(final_score * 100, 2) if final_score is not None else None,
+        "confidence": round(final_score * 100, 2) if final_score is not None else None,
         "ensemble_risk_level": risk_level,
+        "analysis_status": analysis_status,
+        "engine_status": engine_status,
+        "fusion_method": fusion_method,
         "xai_summary": xai_summary,
         "xai": xai_payload,
         "reasons": reasons,
-        "individual_scores_percent": {k: round(v * 100, 2) for k, v in scores.items()},
+        "individual_scores_percent": {k: round(v * 100, 2) for k, v in returned_scores.items()},
         "redirect_analysis": redirect_analysis,
     }

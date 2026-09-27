@@ -7,7 +7,7 @@ interface RedirectAnalysisProps {
 
 const STATE_LABELS: Record<string, string> = {
   completed: 'Resolution completed',
-  blocked: 'Destination blocked',
+  blocked: 'Redirect resolution restricted',
   failed: 'Resolution failed',
   loop: 'Redirect loop detected',
   limit_exceeded: 'Redirect limit reached',
@@ -27,14 +27,31 @@ function hopLabel(hop: RedirectHop, index: number, total: number): string {
 }
 
 export default function RedirectAnalysis({ analysis }: RedirectAnalysisProps) {
-  if (!analysis) return null
+  if (!analysis) {
+    return (
+      <section className="redirect-analysis glass-card" aria-labelledby="redirect-analysis-heading">
+        <div className="redirect-analysis__header">
+          <div>
+            <p className="redirect-analysis__eyebrow">URL PATH EVIDENCE</p>
+            <h2 id="redirect-analysis-heading" className="redirect-analysis__title">REDIRECT ANALYSIS</h2>
+          </div>
+        </div>
+        <p className="redirect-analysis__notice">No redirect analysis available for this scan.</p>
+      </section>
+    )
+  }
 
-  const state = analysis.resolution_state || 'unavailable'
+  const state = typeof analysis.resolution_state === 'string' && analysis.resolution_state
+    ? analysis.resolution_state
+    : 'unavailable'
   const tone = stateTone(state)
-  const chain = analysis.redirect_chain ?? []
+  const chain = Array.isArray(analysis.redirect_chain)
+    ? analysis.redirect_chain.filter(hop => hop && typeof hop.url === 'string')
+    : []
+  const errors = Array.isArray(analysis.errors) ? analysis.errors.filter(error => typeof error === 'string') : []
   const hops = chain.length > 0
     ? chain
-    : [{ url: analysis.original_url, status_code: null } satisfies RedirectHop]
+    : [{ url: typeof analysis.original_url === 'string' ? analysis.original_url : 'Unavailable', status_code: null } satisfies RedirectHop]
 
   return (
     <section className="redirect-analysis glass-card" aria-labelledby="redirect-analysis-heading">
@@ -52,7 +69,7 @@ export default function RedirectAnalysis({ analysis }: RedirectAnalysisProps) {
       <div className="redirect-analysis__summary">
         <div>
           <span className="redirect-analysis__label">Redirects</span>
-          <strong>{analysis.num_redirects}</strong>
+          <strong>{typeof analysis.num_redirects === 'number' ? analysis.num_redirects : 'Unavailable'}</strong>
         </div>
         <div>
           <span className="redirect-analysis__label">Meta refresh</span>
@@ -87,15 +104,17 @@ export default function RedirectAnalysis({ analysis }: RedirectAnalysisProps) {
       </div>
 
       <div className="redirect-analysis__destination">
-        <span className="redirect-analysis__label">Final resolved URL</span>
-        <code>{analysis.final_url}</code>
+        <span className="redirect-analysis__label">
+          {state === 'blocked' ? 'Last URL before resolution stopped' : 'Final resolved URL'}
+        </span>
+        <code>{typeof analysis.final_url === 'string' && analysis.final_url ? analysis.final_url : 'Unavailable'}</code>
       </div>
 
       {(analysis.loop_detected || state === 'limit_exceeded' || state === 'blocked' || state === 'failed' || state === 'unavailable') && (
         <div className={`redirect-analysis__notice redirect-analysis__notice--${tone}`} role="status">
           {analysis.loop_detected && 'Resolution stopped after a repeated URL was detected.'}
           {!analysis.loop_detected && state === 'limit_exceeded' && 'Resolution stopped because the redirect limit was reached.'}
-          {!analysis.loop_detected && state === 'blocked' && 'A destination was blocked by SSRF protection.'}
+          {!analysis.loop_detected && state === 'blocked' && 'Redirect resolution was restricted by URL safety protection. This is not the final phishing verdict.'}
           {!analysis.loop_detected && (state === 'failed' || state === 'unavailable') && 'The chain could not be fully resolved; the available result is shown as evidence.'}
         </div>
       )}
@@ -106,11 +125,11 @@ export default function RedirectAnalysis({ analysis }: RedirectAnalysisProps) {
         </p>
       )}
 
-      {analysis.errors.length > 0 && (
+      {errors.length > 0 && (
         <details className="redirect-analysis__errors">
-          <summary>Resolution limitations ({analysis.errors.length})</summary>
+          <summary>Resolution limitations ({errors.length})</summary>
           <ul>
-            {analysis.errors.map((error, index) => <li key={`${error}-${index}`}>{error}</li>)}
+            {errors.map((error, index) => <li key={`${error}-${index}`}>{error}</li>)}
           </ul>
         </details>
       )}

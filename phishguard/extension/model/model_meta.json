@@ -13,14 +13,9 @@
     "has_ip_address",
     "entropy",
     "suspicious_keywords",
-    "uses_https",
-    "num_subdomains",
-    "has_unicode",
-    "is_punycode",
-    "confusable_chars",
-    "mixed_script_changes"
+    "uses_https"
   ],
-  "num_features": 19,
+  "num_features": 14,
   "model_file": "phishguard_url_classifier.onnx",
   "input_name": "features",
   "classes": [
